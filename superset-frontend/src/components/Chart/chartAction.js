@@ -534,6 +534,54 @@ export function exploreJSON(
   };
 }
 
+export const CHART_TRANSFORM_STARTED = 'CHART_TRANSFORM_STARTED';
+export function chartTransformStarted(key) {
+  return { type: CHART_TRANSFORM_STARTED, key };
+}
+
+export const CHART_TRANSFORM_SUCCEEDED = 'CHART_TRANSFORM_SUCCEEDED';
+export function chartTransformSucceeded(queriesResponse, key) {
+  return { type: CHART_TRANSFORM_SUCCEEDED, queriesResponse, key };
+}
+
+export const CHART_TRANSFORM_FAILED = 'CHART_TRANSFORM_FAILED';
+export function chartTransformFailed(error, key) {
+  return { type: CHART_TRANSFORM_FAILED, error, key };
+}
+
+/**
+ * Transform cached raw data with new post-processing operations.
+ * This enables instant chart type switching without re-querying the database.
+ *
+ * @param {string} rawCacheKey - The cache key for the raw data
+ * @param {Array} postProcessing - Array of post-processing operations
+ * @param {number} key - Chart key/id
+ * @returns {Function} Redux thunk action
+ */
+export function transformCachedData(rawCacheKey, postProcessing, key) {
+  return async dispatch => {
+    dispatch(chartTransformStarted(key));
+
+    try {
+      const response = await SupersetClient.post({
+        endpoint: '/api/v1/chart/data/transform',
+        jsonPayload: {
+          raw_cache_key: rawCacheKey,
+          post_processing: postProcessing,
+          result_format: 'json',
+        },
+      });
+
+      const { result } = response.json;
+      return dispatch(chartTransformSucceeded(result, key));
+    } catch (error) {
+      const clientError = await getClientErrorObject(error);
+      dispatch(addDangerToast(t('Failed to transform chart data')));
+      return dispatch(chartTransformFailed(clientError, key));
+    }
+  };
+}
+
 export const POST_CHART_FORM_DATA = 'POST_CHART_FORM_DATA';
 export function postChartFormData(
   formData,

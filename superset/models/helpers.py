@@ -669,6 +669,7 @@ class QueryResult:  # pylint: disable=too-few-public-methods
         errors: Optional[list[dict[str, Any]]] = None,
         from_dttm: Optional[datetime] = None,
         to_dttm: Optional[datetime] = None,
+        df_raw: Optional[pd.DataFrame] = None,
     ) -> None:
         self.df = df
         self.query = query
@@ -682,6 +683,8 @@ class QueryResult:  # pylint: disable=too-few-public-methods
         self.from_dttm = from_dttm
         self.to_dttm = to_dttm
         self.sql_rowcount = len(self.df.index) if not self.df.empty else 0
+        # Raw DataFrame before post-processing (for instant chart switching)
+        self.df_raw = df_raw
 
 
 class ExtraJSONMixin:
@@ -1317,6 +1320,7 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
 
         # Process the dataframe if not empty
         df = result.df
+        df_raw = None
         if not df.empty:
             # Normalize datetime columns and metrics
             df = self.normalize_df(df, query_object)
@@ -1333,6 +1337,9 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
                 query += ";\n\n".join(queries)
                 query += ";\n\n"
 
+            # Capture raw DataFrame before post-processing for instant chart switching
+            df_raw = df.copy()
+
             # Execute post-processing operations
             try:
                 df = query_object.exec_post_processing(df)
@@ -1341,6 +1348,7 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
 
         # Update result with processed data
         result.df = df
+        result.df_raw = df_raw
         result.query = query
         result.from_dttm = query_object.from_dttm
         result.to_dttm = query_object.to_dttm

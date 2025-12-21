@@ -511,6 +511,84 @@ class QueryObject:  # pylint: disable=too-many-instance-attributes
             )
         return cache_key
 
+    def raw_cache_key(self, **extra: Any) -> str:
+        """
+        Generate cache key for raw data (excludes post_processing).
+
+        This enables caching query results before post-processing,
+        allowing different viz types to share the same cached raw data
+        for instant chart switching.
+        """
+        # Cast to dict[str, Any] for mutation operations
+        cache_dict: dict[str, Any] = dict(self.to_dict())
+        cache_dict.update(extra)
+
+        # Remove post-processing from cache key - this is the key difference
+        cache_dict.pop("post_processing", None)
+
+        # Same logic as cache_key but without post_processing
+        if not self.apply_fetch_values_predicate:
+            del cache_dict["apply_fetch_values_predicate"]
+        if self.datasource:
+            cache_dict["datasource"] = self.datasource.uid
+        if self.result_type:
+            cache_dict["result_type"] = self.result_type
+        if self.time_range:
+            cache_dict["time_range"] = self.time_range
+        if self.time_offsets:
+            cache_dict["time_offsets"] = self.time_offsets
+
+        for k in ["from_dttm", "to_dttm"]:
+            del cache_dict[k]
+
+        annotation_fields = [
+            "annotationType",
+            "descriptionColumns",
+            "intervalEndColumn",
+            "name",
+            "overrides",
+            "sourceType",
+            "timeColumn",
+            "titleColumn",
+            "value",
+        ]
+        annotation_layers = [
+            {field: layer[field] for field in annotation_fields if field in layer}
+            for layer in self.annotation_layers
+        ]
+        if annotation_layers:
+            cache_dict["annotation_layers"] = annotation_layers
+
+        # Add impersonation key if needed (same as cache_key)
+        try:
+            database = self.datasource.database  # type: ignore
+            extra_json = json.loads(database.extra or "{}")
+            if (
+                (
+                    feature_flag_manager.is_feature_enabled("CACHE_IMPERSONATION")
+                    and database.impersonate_user
+                )
+                or feature_flag_manager.is_feature_enabled("CACHE_QUERY_BY_USER")
+                or extra_json.get("per_user_caching", False)
+            ):
+                if key := database.db_engine_spec.get_impersonation_key(
+                    getattr(g, "user", None)
+                ):
+                    cache_dict["impersonation_key"] = key
+        except AttributeError:
+            pass
+
+        raw_cache_key = hash_from_dict(
+            cache_dict, default=json_int_dttm_ser, ignore_nan=True
+        )
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "QueryObject RAW CACHE KEY generated: %s from dict with keys: %s",
+                raw_cache_key,
+                sorted(cache_dict.keys()),
+            )
+        return f"raw-{raw_cache_key}"
+
     def exec_post_processing(self, df: DataFrame) -> DataFrame:
         """
         Perform post processing operations on DataFrame.

@@ -89,6 +89,7 @@ class QueryContextProcessor:
             query_obj.validate()
 
         cache_key = self.query_cache_key(query_obj)
+        raw_cache_key = self.raw_query_cache_key(query_obj)
         timeout = self.get_cache_timeout()
         force_query = self._query_context.force or timeout == CACHE_DISABLED_TIMEOUT
         cache = QueryCacheManager.get(
@@ -127,6 +128,15 @@ class QueryContextProcessor:
                     datasource_uid=self._qc_datasource.uid,
                     region=CacheRegion.DATA,
                 )
+
+                # Cache raw data separately for instant chart switching
+                if raw_cache_key and query_result.df_raw is not None:
+                    self._cache_raw_data(
+                        raw_cache_key=raw_cache_key,
+                        query_result=query_result,
+                        annotation_data=annotation_data,
+                        timeout=timeout,
+                    )
             except QueryObjectValidationError as ex:
                 cache.error_message = str(ex)
                 cache.status = QueryStatus.FAILED
@@ -180,6 +190,7 @@ class QueryContextProcessor:
 
         return {
             "cache_key": cache_key,
+            "raw_cache_key": raw_cache_key,
             "cached_dttm": cache.cache_dttm,
             "cache_timeout": self.get_cache_timeout(),
             "df": cache.df,
@@ -218,6 +229,57 @@ class QueryContextProcessor:
             else None
         )
         return cache_key
+
+    def raw_query_cache_key(self, query_obj: QueryObject, **kwargs: Any) -> str | None:
+        """
+        Returns a QueryObject cache key for raw data (excludes post_processing).
+
+        This enables caching query results before post-processing, allowing
+        different viz types to share the same cached raw data for instant
+        chart switching.
+        """
+        datasource = self._qc_datasource
+        extra_cache_keys = datasource.get_extra_cache_keys(query_obj.to_dict())
+
+        raw_cache_key = (
+            query_obj.raw_cache_key(
+                datasource=datasource.uid,
+                extra_cache_keys=extra_cache_keys,
+                rls=security_manager.get_rls_cache_key(datasource),
+                changed_on=datasource.changed_on,
+                **kwargs,
+            )
+            if query_obj
+            else None
+        )
+        return raw_cache_key
+
+    def _cache_raw_data(
+        self,
+        raw_cache_key: str,
+        query_result: QueryResult,
+        annotation_data: dict[str, Any],
+        timeout: int,
+    ) -> None:
+        """
+        Cache raw data (pre-post-processing) for instant chart switching.
+        """
+        value = {
+            "df": query_result.df_raw,
+            "query": query_result.query,
+            "applied_template_filters": query_result.applied_template_filters,
+            "applied_filter_columns": query_result.applied_filter_columns,
+            "rejected_filter_columns": query_result.rejected_filter_columns,
+            "annotation_data": annotation_data,
+            "sql_rowcount": query_result.sql_rowcount,
+        }
+        set_and_log_cache(
+            cache_manager.data_cache,
+            raw_cache_key,
+            value,
+            timeout,
+            self._qc_datasource.uid,
+        )
 
     def get_query_result(self, query_object: QueryObject) -> QueryResult:
         """

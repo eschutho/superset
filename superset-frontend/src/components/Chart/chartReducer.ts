@@ -177,6 +177,32 @@ export default function chartReducer(
         annotationQuery,
       };
     },
+    [actions.CHART_TRANSFORM_STARTED](state) {
+      return {
+        ...state,
+        chartStatus: 'loading',
+        chartStackTrace: null,
+        chartAlert: null,
+        chartUpdateStartTime: now(),
+      };
+    },
+    [actions.CHART_TRANSFORM_SUCCEEDED](state) {
+      return {
+        ...state,
+        chartStatus: 'success',
+        chartAlert: null,
+        queriesResponse: action.queriesResponse,
+        chartUpdateEndTime: now(),
+      };
+    },
+    [actions.CHART_TRANSFORM_FAILED](state) {
+      return {
+        ...state,
+        chartStatus: 'failed',
+        chartAlert: action.error?.message || t('Transform failed.'),
+        chartUpdateEndTime: now(),
+      };
+    },
   };
 
   /* eslint-disable no-param-reassign */

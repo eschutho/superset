@@ -40,6 +40,7 @@ from superset.commands.chart.data.get_data_command import ChartDataCommand
 from superset.commands.chart.data.streaming_export_command import (
     StreamingCSVExportCommand,
 )
+from superset.commands.chart.data.transform_command import ChartDataTransformCommand
 from superset.commands.chart.exceptions import (
     ChartDataCacheLoadError,
     ChartDataQueryFailedError,
@@ -47,7 +48,7 @@ from superset.commands.chart.exceptions import (
 from superset.common.chart_data import ChartDataResultFormat, ChartDataResultType
 from superset.connectors.sqla.models import BaseDatasource
 from superset.daos.exceptions import DatasourceNotFound
-from superset.exceptions import QueryObjectValidationError
+from superset.exceptions import InvalidPostProcessingError, QueryObjectValidationError
 from superset.extensions import event_logger
 from superset.models.sql_lab import Query
 from superset.utils import json
@@ -67,7 +68,7 @@ logger = logging.getLogger(__name__)
 
 
 class ChartDataRestApi(ChartRestApi):
-    include_route_methods = {"get_data", "data", "data_from_cache"}
+    include_route_methods = {"get_data", "data", "data_from_cache", "transform"}
 
     @expose("/<int:pk>/data/", methods=("GET",))
     @protect()
@@ -341,6 +342,97 @@ class ChartDataRestApi(ChartRestApi):
             )
 
         return self._get_data_response(command, True)
+
+    @expose("/data/transform", methods=("POST",))
+    @protect()
+    @statsd_metrics
+    @event_logger.log_this_with_context(
+        action=lambda self, *args, **kwargs: f"{self.__class__.__name__}.transform",
+        log_to_statsd=False,
+    )
+    def transform(self) -> Response:
+        """
+        Transform cached raw data with new post-processing operations.
+        ---
+        post:
+          summary: Transform cached raw data with new post-processing
+          description: >-
+            Takes a raw data cache key and applies new post-processing operations
+            to enable instant chart type switching without re-querying the database.
+          requestBody:
+            required: true
+            content:
+              application/json:
+                schema:
+                  type: object
+                  required:
+                    - raw_cache_key
+                  properties:
+                    raw_cache_key:
+                      type: string
+                      description: Cache key for raw (pre-postprocessing) data
+                    post_processing:
+                      type: array
+                      description: New post-processing operations to apply
+                      items:
+                        type: object
+                        properties:
+                          operation:
+                            type: string
+                          options:
+                            type: object
+                    result_format:
+                      type: string
+                      enum: [json, csv, xlsx]
+                      default: json
+          responses:
+            200:
+              description: Transformed chart data
+              content:
+                application/json:
+                  schema:
+                    $ref: "#/components/schemas/ChartDataResponseSchema"
+            400:
+              $ref: '#/components/responses/400'
+            401:
+              $ref: '#/components/responses/401'
+            404:
+              $ref: '#/components/responses/404'
+            500:
+              $ref: '#/components/responses/500'
+        """
+        if not request.is_json:
+            return self.response_400(message=_("Request is not JSON"))
+
+        json_body = request.json
+        raw_cache_key = json_body.get("raw_cache_key")
+        if not raw_cache_key:
+            return self.response_400(message=_("raw_cache_key is required"))
+
+        post_processing = json_body.get("post_processing", [])
+        result_format = json_body.get("result_format", "json")
+
+        try:
+            command = ChartDataTransformCommand(
+                raw_cache_key=raw_cache_key,
+                post_processing=post_processing,
+                result_format=result_format,
+            )
+            result = command.run()
+        except ChartDataCacheLoadError:
+            return self.response_404()
+        except (ChartDataQueryFailedError, InvalidPostProcessingError) as ex:
+            return self.response_400(message=str(ex))
+
+        # Return JSON response
+        response_data = json.dumps(
+            {"result": result["queries"]},
+            default=json.json_int_dttm_ser,
+            ignore_nan=True,
+        )
+        resp = make_response(response_data, 200)
+        resp.headers["Content-Type"] = "application/json; charset=utf-8"
+        return resp
 
     def _run_async(
         self,
