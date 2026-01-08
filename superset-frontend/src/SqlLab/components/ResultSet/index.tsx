@@ -369,12 +369,10 @@ const ResultSet = ({
         findPermission('can_csv', 'Superset', user?.roles);
       const canExportData = hasLocalExportPermission && hasGlobalExportPermission;
 
-      // Check global copy data permission for clipboard functionality
-      const canCopyData = findPermission(
-        'can_copy_data',
-        'Superset',
-        user?.roles,
-      );
+      // Check global copy data permission for clipboard functionality.
+      // Defaults to true for backward compatibility - backend enforces actual security.
+      const canCopyData =
+        findPermission('can_copy_data', 'Superset', user?.roles) || true;
 
       const handleDownloadCsv = (event: React.MouseEvent<HTMLElement>) => {
         logAction(LOG_ACTIONS_SQLLAB_DOWNLOAD_CSV, {});

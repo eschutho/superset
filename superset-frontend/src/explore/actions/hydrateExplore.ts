@@ -150,12 +150,12 @@ export const hydrateExplore =
       can_download:
         findPermission('can_export_data', 'Superset', user?.roles) ||
         findPermission('can_csv', 'Superset', user?.roles),
-      can_export_image: findPermission(
-        'can_export_image',
-        'Superset',
-        user?.roles,
-      ),
-      can_copy_data: findPermission('can_copy_data', 'Superset', user?.roles),
+      // Export image and copy data permissions default to true for backward compatibility.
+      // The backend handles the actual "default to allowed" logic and enforces security.
+      can_export_image:
+        findPermission('can_export_image', 'Superset', user?.roles) || true,
+      can_copy_data:
+        findPermission('can_copy_data', 'Superset', user?.roles) || true,
       can_overwrite: ensureIsArray(slice?.owners).includes(
         user?.userId as number,
       ),

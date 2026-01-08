@@ -28,15 +28,22 @@ assists people when migrating to a new version.
 
 Three new permissions have been added to provide fine-grained control over export capabilities:
 
-| Permission | View Menu | Description |
-|------------|-----------|-------------|
-| `can_export_data` | Superset | Controls data exports (CSV, Excel, JSON) |
-| `can_export_image` | Superset | Controls image and PDF exports |
-| `can_copy_data` | Superset | Controls clipboard functionality |
+| Permission | View Menu | Description | Default Behavior |
+|------------|-----------|-------------|------------------|
+| `can_export_data` | Superset | Controls data exports (CSV, Excel, JSON) | Opt-in (requires explicit grant) |
+| `can_export_image` | Superset | Controls image and PDF exports | Opt-out (allowed by default) |
+| `can_copy_data` | Superset | Controls clipboard functionality | Opt-out (allowed by default) |
 
-These permissions are automatically created when running `superset init`. By default, existing roles retain full export capabilities through backward compatibility with the `can_csv` permission.
+These permissions are automatically created when running `superset init`.
 
-**Action Required**: If you want to restrict export capabilities for specific roles, navigate to **Security > List Roles** and remove the relevant export permissions from those roles.
+**No Action Required for Existing Deployments**: This change is non-breaking. All export capabilities continue to work as before:
+- `can_export_data` maintains backward compatibility with the legacy `can_csv` permission
+- `can_export_image` and `can_copy_data` use an opt-out model - they are allowed by default until an administrator explicitly configures restrictions
+
+**To Restrict Export Capabilities**: If you want to restrict `can_export_image` or `can_copy_data` for specific roles:
+1. Navigate to **Security > List Roles**
+2. Add the permission to roles that SHOULD have access (e.g., add `can_export_image on Superset` to the Admin role)
+3. Roles without the permission will be automatically restricted once any role has it
 
 For more information, see the [Export Control Permissions documentation](https://superset.apache.org/docs/security/security#export-control-permissions).
 

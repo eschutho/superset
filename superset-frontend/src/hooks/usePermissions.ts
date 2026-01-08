@@ -35,11 +35,19 @@ export const usePermissions = () => {
     findPermission('can_export_data', 'Superset', state.user?.roles) ||
     findPermission('can_csv', 'Superset', state.user?.roles),
   );
-  const canExportImage = useSelector((state: RootState) =>
-    findPermission('can_export_image', 'Superset', state.user?.roles),
+  // Export image and copy data permissions use "default to allowed" behavior:
+  // These permissions default to true on the frontend because:
+  // 1. The backend handles the actual permission check with "default to allowed" logic
+  // 2. The frontend cannot determine if a permission has been configured in the system
+  // 3. The backend will reject unauthorized actions with proper errors
+  // Once an admin explicitly configures these permissions, the backend enforces them.
+  const canExportImage = useSelector(
+    (state: RootState) =>
+      findPermission('can_export_image', 'Superset', state.user?.roles) || true,
   );
-  const canCopyData = useSelector((state: RootState) =>
-    findPermission('can_copy_data', 'Superset', state.user?.roles),
+  const canCopyData = useSelector(
+    (state: RootState) =>
+      findPermission('can_copy_data', 'Superset', state.user?.roles) || true,
   );
   const canDrill = useSelector((state: RootState) =>
     findPermission('can_drill', 'Dashboard', state.user?.roles),

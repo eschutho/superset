@@ -529,20 +529,56 @@ class SupersetSecurityManager(  # pylint: disable=too-many-public-methods
             "can_csv", "Superset"
         )
 
+    def _is_permission_configured(
+        self, permission_name: str, view_menu_name: str
+    ) -> bool:
+        """
+        Check if the given permission has been configured (assigned to any role).
+
+        This is used to implement "default to allowed" behavior for new permissions:
+        if the permission exists but hasn't been assigned to any role, we assume
+        it's not configured yet and should default to allowing the action.
+
+        :param permission_name: The permission name
+        :param view_menu_name: The view menu name
+        :returns: True if any role has this permission, False otherwise
+        """
+        pvm = self.find_permission_view_menu(permission_name, view_menu_name)
+        if not pvm:
+            return False
+        # Check if any role has this permission assigned
+        return len(pvm.role) > 0
+
     def can_export_image(self) -> bool:
         """
         Return True if the user can export images/PDFs, False otherwise.
 
+        Uses "default to allowed" behavior: if the permission hasn't been
+        configured (not assigned to any role), returns True. Once an admin
+        assigns the permission to at least one role, proper permission
+        checking takes effect.
+
         :returns: Whether the user can export images
         """
+        # Default to allowed if permission hasn't been configured yet
+        if not self._is_permission_configured("can_export_image", "Superset"):
+            return True
         return self.can_access("can_export_image", "Superset")
 
     def can_copy_data(self) -> bool:
         """
         Return True if the user can copy data to clipboard, False otherwise.
 
+        Uses "default to allowed" behavior: if the permission hasn't been
+        configured (not assigned to any role), returns True. Once an admin
+        assigns the permission to at least one role, proper permission
+        checking takes effect.
+
         :returns: Whether the user can copy data to clipboard
         """
+        # Default to allowed if permission hasn't been configured yet
+        if not self._is_permission_configured("can_copy_data", "Superset"):
+            return True
         return self.can_access("can_copy_data", "Superset")
 
     def can_access_database(self, database: "Database") -> bool:

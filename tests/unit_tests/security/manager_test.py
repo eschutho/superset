@@ -1229,14 +1229,19 @@ def test_can_export_data_without_permission(
     assert sm.can_export_data() is False
 
 
-def test_can_export_image_with_permission(
+def test_can_export_image_with_permission_configured(
     mocker: MockerFixture,
     app_context: None,
 ) -> None:
     """
-    Test that can_export_image returns True when user has can_export_image permission.
+    Test that can_export_image returns True when permission is configured
+    and user has can_export_image permission.
     """
     sm = SupersetSecurityManager(appbuilder)
+    # Mock permission as configured (assigned to at least one role)
+    mock_pvm = mocker.MagicMock()
+    mock_pvm.role = [mocker.MagicMock()]  # At least one role has this permission
+    mocker.patch.object(sm, "find_permission_view_menu", return_value=mock_pvm)
     mocker.patch.object(
         sm, "can_access", side_effect=lambda perm, vm: perm == "can_export_image"
     )
@@ -1244,27 +1249,72 @@ def test_can_export_image_with_permission(
     assert sm.can_export_image() is True
 
 
-def test_can_export_image_without_permission(
+def test_can_export_image_without_permission_configured(
     mocker: MockerFixture,
     app_context: None,
 ) -> None:
     """
-    Test that can_export_image returns False when user lacks the permission.
+    Test that can_export_image returns False when permission is configured
+    but user lacks the permission.
     """
     sm = SupersetSecurityManager(appbuilder)
+    # Mock permission as configured (assigned to at least one role)
+    mock_pvm = mocker.MagicMock()
+    mock_pvm.role = [mocker.MagicMock()]  # At least one role has this permission
+    mocker.patch.object(sm, "find_permission_view_menu", return_value=mock_pvm)
     mocker.patch.object(sm, "can_access", return_value=False)
 
     assert sm.can_export_image() is False
 
 
-def test_can_copy_data_with_permission(
+def test_can_export_image_not_configured(
     mocker: MockerFixture,
     app_context: None,
 ) -> None:
     """
-    Test that can_copy_data returns True when user has can_copy_data permission.
+    Test that can_export_image returns True (default to allowed) when
+    permission is not configured (not assigned to any role).
     """
     sm = SupersetSecurityManager(appbuilder)
+    # Mock permission as not configured (no role has this permission)
+    mock_pvm = mocker.MagicMock()
+    mock_pvm.role = []  # No role has this permission
+    mocker.patch.object(sm, "find_permission_view_menu", return_value=mock_pvm)
+    mocker.patch.object(sm, "can_access", return_value=False)
+
+    # Should return True because permission is not configured (default to allowed)
+    assert sm.can_export_image() is True
+
+
+def test_can_export_image_permission_not_exists(
+    mocker: MockerFixture,
+    app_context: None,
+) -> None:
+    """
+    Test that can_export_image returns True (default to allowed) when
+    permission view menu doesn't exist yet.
+    """
+    sm = SupersetSecurityManager(appbuilder)
+    # Mock permission as not existing
+    mocker.patch.object(sm, "find_permission_view_menu", return_value=None)
+
+    # Should return True because permission doesn't exist (default to allowed)
+    assert sm.can_export_image() is True
+
+
+def test_can_copy_data_with_permission_configured(
+    mocker: MockerFixture,
+    app_context: None,
+) -> None:
+    """
+    Test that can_copy_data returns True when permission is configured
+    and user has can_copy_data permission.
+    """
+    sm = SupersetSecurityManager(appbuilder)
+    # Mock permission as configured (assigned to at least one role)
+    mock_pvm = mocker.MagicMock()
+    mock_pvm.role = [mocker.MagicMock()]  # At least one role has this permission
+    mocker.patch.object(sm, "find_permission_view_menu", return_value=mock_pvm)
     mocker.patch.object(
         sm, "can_access", side_effect=lambda perm, vm: perm == "can_copy_data"
     )
@@ -1272,14 +1322,54 @@ def test_can_copy_data_with_permission(
     assert sm.can_copy_data() is True
 
 
-def test_can_copy_data_without_permission(
+def test_can_copy_data_without_permission_configured(
     mocker: MockerFixture,
     app_context: None,
 ) -> None:
     """
-    Test that can_copy_data returns False when user lacks the permission.
+    Test that can_copy_data returns False when permission is configured
+    but user lacks the permission.
     """
     sm = SupersetSecurityManager(appbuilder)
+    # Mock permission as configured (assigned to at least one role)
+    mock_pvm = mocker.MagicMock()
+    mock_pvm.role = [mocker.MagicMock()]  # At least one role has this permission
+    mocker.patch.object(sm, "find_permission_view_menu", return_value=mock_pvm)
     mocker.patch.object(sm, "can_access", return_value=False)
 
     assert sm.can_copy_data() is False
+
+
+def test_can_copy_data_not_configured(
+    mocker: MockerFixture,
+    app_context: None,
+) -> None:
+    """
+    Test that can_copy_data returns True (default to allowed) when
+    permission is not configured (not assigned to any role).
+    """
+    sm = SupersetSecurityManager(appbuilder)
+    # Mock permission as not configured (no role has this permission)
+    mock_pvm = mocker.MagicMock()
+    mock_pvm.role = []  # No role has this permission
+    mocker.patch.object(sm, "find_permission_view_menu", return_value=mock_pvm)
+    mocker.patch.object(sm, "can_access", return_value=False)
+
+    # Should return True because permission is not configured (default to allowed)
+    assert sm.can_copy_data() is True
+
+
+def test_can_copy_data_permission_not_exists(
+    mocker: MockerFixture,
+    app_context: None,
+) -> None:
+    """
+    Test that can_copy_data returns True (default to allowed) when
+    permission view menu doesn't exist yet.
+    """
+    sm = SupersetSecurityManager(appbuilder)
+    # Mock permission as not existing
+    mocker.patch.object(sm, "find_permission_view_menu", return_value=None)
+
+    # Should return True because permission doesn't exist (default to allowed)
+    assert sm.can_copy_data() is True

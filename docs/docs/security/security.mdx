@@ -128,20 +128,40 @@ permissions. Here are the different categories of permissions:
 Superset provides fine-grained permissions to control export capabilities. These permissions
 allow administrators to selectively disable export functionalities for specific user roles.
 
-| Permission | View Menu | Description |
-|------------|-----------|-------------|
-| `can_export_data` | Superset | Controls data exports (CSV, Excel, JSON). Users without this permission cannot download data from charts, dashboards, or SQL Lab. |
-| `can_export_image` | Superset | Controls image and PDF exports. Users without this permission cannot download charts or dashboards as images or PDFs. |
-| `can_copy_data` | Superset | Controls clipboard functionality. Users without this permission cannot copy data to clipboard from SQL Lab or Explore. |
+| Permission | View Menu | Description | Default Behavior |
+|------------|-----------|-------------|------------------|
+| `can_export_data` | Superset | Controls data exports (CSV, Excel, JSON). Users without this permission cannot download data from charts, dashboards, or SQL Lab. | Requires explicit grant (opt-in) |
+| `can_export_image` | Superset | Controls image and PDF exports. Users without this permission cannot download charts or dashboards as images or PDFs. | Allowed by default (opt-out) |
+| `can_copy_data` | Superset | Controls clipboard functionality. Users without this permission cannot copy data to clipboard from SQL Lab or Explore. | Allowed by default (opt-out) |
 
 **Note**: The legacy `can_csv` permission is still supported for backward compatibility and works the same as `can_export_data`.
 
-To restrict export capabilities for a role:
+#### Permission Behavior: Opt-In vs Opt-Out
+
+- **`can_export_data`** uses an **opt-in** model: Users need to be explicitly granted this permission (or the legacy `can_csv` permission) to export data.
+
+- **`can_export_image`** and **`can_copy_data`** use an **opt-out** model: By default, these capabilities are allowed for all users. To restrict these capabilities:
+  1. First, grant the permission to at least one role (this "activates" the permission system for that capability)
+  2. Only roles that have the permission explicitly granted will be able to use the feature
+  3. Roles without the permission will be restricted
+
+This opt-out behavior ensures backward compatibility - existing deployments will continue to work as expected after upgrading, and administrators can selectively enable restrictions when needed.
+
+#### Restricting Export Capabilities
+
+To restrict export capabilities for specific roles:
 
 1. Navigate to **Security** > **List Roles**
-2. Select the role you want to modify
-3. In the Permissions dropdown, remove the relevant export permission (`can_export_data on Superset`, `can_export_image on Superset`, or `can_copy_data on Superset`)
-4. Save the role
+2. Decide which roles SHOULD have the export capability
+3. For those roles, add the relevant permission (`can_export_data on Superset`, `can_export_image on Superset`, or `can_copy_data on Superset`)
+4. Save the roles
+
+Once a permission is granted to at least one role, it becomes "active" and all other roles without the permission will be restricted.
+
+**Example**: To allow only Admin users to export images:
+1. Edit the **Admin** role and add `can_export_image on Superset`
+2. Do NOT add this permission to other roles (Gamma, Alpha, etc.)
+3. Only Admin users will be able to export images
 
 Users with restricted export permissions will see the export/download menu items hidden or disabled in:
 - **Dashboards**: Download submenu in chart menus and dashboard header
