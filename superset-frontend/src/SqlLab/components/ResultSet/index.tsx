@@ -358,9 +358,21 @@ const ResultSet = ({
         schema: query?.schema,
       };
 
-      const canExportData = findPermission(
+      // Check SQLLab permission AND global export permission for data download
+      const hasLocalExportPermission = findPermission(
         'can_export_csv',
         'SQLLab',
+        user?.roles,
+      );
+      const hasGlobalExportPermission =
+        findPermission('can_export_data', 'Superset', user?.roles) ||
+        findPermission('can_csv', 'Superset', user?.roles);
+      const canExportData = hasLocalExportPermission && hasGlobalExportPermission;
+
+      // Check global copy data permission for clipboard functionality
+      const canCopyData = findPermission(
+        'can_copy_data',
+        'Superset',
         user?.roles,
       );
 
@@ -433,7 +445,7 @@ const ResultSet = ({
                 <Icons.DownloadOutlined iconSize="m" /> {t('Download to CSV')}
               </CopyStyledButton>
             )}
-            {canExportData && (
+            {canCopyData && (
               <CopyToClipboard
                 text={prepareCopyToClipboardTabularData(data, columns)}
                 wrapped={false}

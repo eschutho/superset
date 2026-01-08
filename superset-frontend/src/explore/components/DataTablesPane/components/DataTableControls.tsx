@@ -27,6 +27,7 @@ import {
 import { applyFormattingToTabularData } from 'src/utils/common';
 import { getTimeColumns } from 'src/explore/components/DataTableControl/utils';
 import RowCountLabel from 'src/components/RowCountLabel';
+import { usePermissions } from 'src/hooks/usePermissions';
 import { TableControlsProps } from '../types';
 
 export const TableControlsWrapper = styled.div`
@@ -52,6 +53,7 @@ export const TableControls = ({
   isLoading,
   canDownload,
 }: TableControlsProps) => {
+  const { canCopyData } = usePermissions();
   const originalTimeColumns = getTimeColumns(datasourceId);
   const formattedTimeColumns = zip<string, GenericDataType>(
     columnNames,
@@ -68,6 +70,8 @@ export const TableControls = ({
     () => applyFormattingToTabularData(data, formattedTimeColumns),
     [data, formattedTimeColumns],
   );
+  // Show copy to clipboard if user has both download permission AND copy data permission
+  const showCopyToClipboard = canDownload && canCopyData;
   return (
     <TableControlsWrapper>
       <FilterInput onChangeHandler={onInputChange} shouldFocus />
@@ -78,7 +82,7 @@ export const TableControls = ({
         `}
       >
         <RowCountLabel rowcount={rowcount} loading={isLoading} />
-        {canDownload && (
+        {showCopyToClipboard && (
           <CopyToClipboardButton data={formattedData} columns={columnNames} />
         )}
       </div>

@@ -294,7 +294,7 @@ class Superset(BaseSupersetView):
         # Verify user has permission to export CSV file
         if (
             response_type == ChartDataResultFormat.CSV
-            and not security_manager.can_access("can_csv", "Superset")
+            and not security_manager.can_export_data()
         ):
             return json_error_response(
                 _("You don't have the rights to download as csv"),
@@ -490,7 +490,7 @@ class Superset(BaseSupersetView):
         # slc perms
         slice_add_perm = security_manager.can_access("can_write", "Chart")
         slice_overwrite_perm = security_manager.is_owner(slc) if slc else False
-        slice_download_perm = security_manager.can_access("can_csv", "Superset")
+        slice_download_perm = security_manager.can_export_data()
 
         form_data["datasource"] = str(datasource_id) + "__" + cast(str, datasource_type)
 
@@ -548,6 +548,9 @@ class Superset(BaseSupersetView):
 
         bootstrap_data = {
             "can_add": slice_add_perm,
+            "can_download": slice_download_perm,
+            "can_export_image": security_manager.can_export_image(),
+            "can_copy_data": security_manager.can_copy_data(),
             "datasource": sanitize_datasource_data(datasource_data),
             "form_data": form_data,
             "datasource_id": datasource_id,
@@ -662,6 +665,8 @@ class Superset(BaseSupersetView):
         response = {
             "can_add": slice_add_perm,
             "can_download": slice_download_perm,
+            "can_export_image": security_manager.can_export_image(),
+            "can_copy_data": security_manager.can_copy_data(),
             "form_data": slc.form_data,
             "slice": slc.data,
             "dashboard_url": dash.url if dash else None,
@@ -797,6 +802,9 @@ class Superset(BaseSupersetView):
         bootstrap_payload = {
             "user": bootstrap_user_data(g.user, include_perms=True),
             "common": common_bootstrap_payload(),
+            "can_download": security_manager.can_export_data(),
+            "can_export_image": security_manager.can_export_image(),
+            "can_copy_data": security_manager.can_copy_data(),
         }
         return self.render_app_template(
             extra_bootstrap_data=bootstrap_payload,

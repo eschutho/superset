@@ -28,6 +28,7 @@ import {
   LOG_ACTIONS_DASHBOARD_DOWNLOAD_AS_IMAGE,
 } from 'src/logger/LogUtils';
 import { useToasts } from 'src/components/MessageToasts/withToasts';
+import { usePermissions } from 'src/hooks/usePermissions';
 import { DownloadScreenshotFormat } from './types';
 
 export interface UseDownloadMenuItemsProps {
@@ -42,7 +43,7 @@ export interface UseDownloadMenuItemsProps {
 
 export const useDownloadMenuItems = (
   props: UseDownloadMenuItemsProps,
-): MenuItem => {
+): MenuItem | null => {
   const {
     pdfMenuItemTitle,
     imageMenuItemTitle,
@@ -54,6 +55,12 @@ export const useDownloadMenuItems = (
   } = props;
 
   const { addDangerToast } = useToasts();
+  const { canExportImage } = usePermissions();
+
+  // Return null if user doesn't have image export permission
+  if (!canExportImage) {
+    return null;
+  }
   const SCREENSHOT_NODE_SELECTOR = '.dashboard';
 
   const isWebDriverScreenshotEnabled =

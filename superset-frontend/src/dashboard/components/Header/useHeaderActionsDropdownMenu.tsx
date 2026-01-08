@@ -250,8 +250,10 @@ export const useHeaderActionsMenu = ({
       );
     }
 
-    // Download submenu
-    menuItems.push(downloadMenuItem);
+    // Download submenu (only shown if user has image export permission)
+    if (downloadMenuItem) {
+      menuItems.push(downloadMenuItem);
+    }
 
     // Share submenu
     if (userCanShare) {

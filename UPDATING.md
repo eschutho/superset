@@ -24,6 +24,22 @@ assists people when migrating to a new version.
 
 ## Next
 
+### Export Control Permissions
+
+Three new permissions have been added to provide fine-grained control over export capabilities:
+
+| Permission | View Menu | Description |
+|------------|-----------|-------------|
+| `can_export_data` | Superset | Controls data exports (CSV, Excel, JSON) |
+| `can_export_image` | Superset | Controls image and PDF exports |
+| `can_copy_data` | Superset | Controls clipboard functionality |
+
+These permissions are automatically created when running `superset init`. By default, existing roles retain full export capabilities through backward compatibility with the `can_csv` permission.
+
+**Action Required**: If you want to restrict export capabilities for specific roles, navigate to **Security > List Roles** and remove the relevant export permissions from those roles.
+
+For more information, see the [Export Control Permissions documentation](https://superset.apache.org/docs/security/security#export-control-permissions).
+
 ### MCP Service
 
 The MCP (Model Context Protocol) service enables AI assistants and automation tools to interact programmatically with Superset.

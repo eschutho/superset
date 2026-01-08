@@ -30,8 +30,16 @@ export const usePermissions = () => {
   const canDatasourceSamples = useSelector((state: RootState) =>
     findPermission('can_samples', 'Datasource', state.user?.roles),
   );
+  // Data export permission with backward compatibility for can_csv
   const canDownload = useSelector((state: RootState) =>
+    findPermission('can_export_data', 'Superset', state.user?.roles) ||
     findPermission('can_csv', 'Superset', state.user?.roles),
+  );
+  const canExportImage = useSelector((state: RootState) =>
+    findPermission('can_export_image', 'Superset', state.user?.roles),
+  );
+  const canCopyData = useSelector((state: RootState) =>
+    findPermission('can_copy_data', 'Superset', state.user?.roles),
   );
   const canDrill = useSelector((state: RootState) =>
     findPermission('can_drill', 'Dashboard', state.user?.roles),
@@ -55,6 +63,8 @@ export const usePermissions = () => {
     canWriteExploreFormData,
     canDatasourceSamples,
     canDownload,
+    canExportImage,
+    canCopyData,
     canDrill,
     canDrillBy,
     canDrillToDetail,

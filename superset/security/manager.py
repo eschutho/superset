@@ -517,6 +517,34 @@ class SupersetSecurityManager(  # pylint: disable=too-many-public-methods
         """
         return self.can_access("all_database_access", "all_database_access")
 
+    def can_export_data(self) -> bool:
+        """
+        Return True if the user can export data (CSV, XLSX, JSON), False otherwise.
+
+        Maintains backward compatibility with the legacy can_csv permission.
+
+        :returns: Whether the user can export data
+        """
+        return self.can_access("can_export_data", "Superset") or self.can_access(
+            "can_csv", "Superset"
+        )
+
+    def can_export_image(self) -> bool:
+        """
+        Return True if the user can export images/PDFs, False otherwise.
+
+        :returns: Whether the user can export images
+        """
+        return self.can_access("can_export_image", "Superset")
+
+    def can_copy_data(self) -> bool:
+        """
+        Return True if the user can copy data to clipboard, False otherwise.
+
+        :returns: Whether the user can copy data to clipboard
+        """
+        return self.can_access("can_copy_data", "Superset")
+
     def can_access_database(self, database: "Database") -> bool:
         """
         Return True if the user can access the specified database, False otherwise.
@@ -1137,6 +1165,11 @@ class SupersetSecurityManager(  # pylint: disable=too-many-public-methods
         self.add_permission_view_menu("can_drill", "Dashboard")
         self.add_permission_view_menu("can_tag", "Chart")
         self.add_permission_view_menu("can_tag", "Dashboard")
+
+        # Export control permissions for fine-grained export restrictions
+        self.add_permission_view_menu("can_export_data", "Superset")
+        self.add_permission_view_menu("can_export_image", "Superset")
+        self.add_permission_view_menu("can_copy_data", "Superset")
 
     def create_missing_perms(self) -> None:
         """

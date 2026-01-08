@@ -176,7 +176,13 @@ const SliceHeaderControls = (
       .get(props.slice.viz_type)
       ?.behaviors?.includes(Behavior.InteractiveChart);
   const canExplore = props.supersetCanExplore;
-  const { canDrillToDetail, canViewQuery, canViewTable } = usePermissions();
+  const {
+    canDrillToDetail,
+    canViewQuery,
+    canViewTable,
+    canDownload,
+    canExportImage,
+  } = usePermissions();
 
   const datasetResource = useDatasetDrillInfo(
     props.slice.datasource,
@@ -487,58 +493,72 @@ const SliceHeaderControls = (
     newMenuItems.push(shareMenuItems);
   }
 
-  if (props.supersetCanCSV) {
+  // Build download menu items based on permissions
+  // Data exports require both supersetCanCSV (from chart settings) and canDownload (from user permissions)
+  const canExportData = props.supersetCanCSV && canDownload;
+  const downloadChildren: MenuItem[] = [];
+
+  if (canExportData) {
+    downloadChildren.push({
+      key: MenuKeys.ExportCsv,
+      label: t('Export to .CSV'),
+      icon: <Icons.FileOutlined css={dropdownIconsStyles} />,
+    });
+    if (isPivotTable) {
+      downloadChildren.push(
+        {
+          key: MenuKeys.ExportPivotCsv,
+          label: t('Export to Pivoted .CSV'),
+          icon: <Icons.FileOutlined css={dropdownIconsStyles} />,
+        },
+        {
+          key: MenuKeys.ExportPivotXlsx,
+          label: t('Export to Pivoted Excel'),
+          icon: <Icons.FileOutlined css={dropdownIconsStyles} />,
+        },
+      );
+    }
+    downloadChildren.push({
+      key: MenuKeys.ExportXlsx,
+      label: t('Export to Excel'),
+      icon: <Icons.FileOutlined css={dropdownIconsStyles} />,
+    });
+    if (
+      isFeatureEnabled(FeatureFlag.AllowFullCsvExport) &&
+      props.supersetCanCSV &&
+      isTable
+    ) {
+      downloadChildren.push(
+        {
+          key: MenuKeys.ExportFullCsv,
+          label: t('Export to full .CSV'),
+          icon: <Icons.FileOutlined css={dropdownIconsStyles} />,
+        },
+        {
+          key: MenuKeys.ExportFullXlsx,
+          label: t('Export to full Excel'),
+          icon: <Icons.FileOutlined css={dropdownIconsStyles} />,
+        },
+      );
+    }
+  }
+
+  // Image exports require canExportImage permission
+  if (canExportImage) {
+    downloadChildren.push({
+      key: MenuKeys.DownloadAsImage,
+      label: t('Download as image'),
+      icon: <Icons.FileImageOutlined css={dropdownIconsStyles} />,
+    });
+  }
+
+  // Only show download menu if there are items to show
+  if (downloadChildren.length > 0) {
     newMenuItems.push({
       type: 'submenu',
       key: MenuKeys.Download,
       label: t('Download'),
-      children: [
-        {
-          key: MenuKeys.ExportCsv,
-          label: t('Export to .CSV'),
-          icon: <Icons.FileOutlined css={dropdownIconsStyles} />,
-        },
-        ...(isPivotTable
-          ? [
-              {
-                key: MenuKeys.ExportPivotCsv,
-                label: t('Export to Pivoted .CSV'),
-                icon: <Icons.FileOutlined css={dropdownIconsStyles} />,
-              },
-              {
-                key: MenuKeys.ExportPivotXlsx,
-                label: t('Export to Pivoted Excel'),
-                icon: <Icons.FileOutlined css={dropdownIconsStyles} />,
-              },
-            ]
-          : []),
-        {
-          key: MenuKeys.ExportXlsx,
-          label: t('Export to Excel'),
-          icon: <Icons.FileOutlined css={dropdownIconsStyles} />,
-        },
-        ...(isFeatureEnabled(FeatureFlag.AllowFullCsvExport) &&
-        props.supersetCanCSV &&
-        isTable
-          ? [
-              {
-                key: MenuKeys.ExportFullCsv,
-                label: t('Export to full .CSV'),
-                icon: <Icons.FileOutlined css={dropdownIconsStyles} />,
-              },
-              {
-                key: MenuKeys.ExportFullXlsx,
-                label: t('Export to full Excel'),
-                icon: <Icons.FileOutlined css={dropdownIconsStyles} />,
-              },
-            ]
-          : []),
-        {
-          key: MenuKeys.DownloadAsImage,
-          label: t('Download as image'),
-          icon: <Icons.FileImageOutlined css={dropdownIconsStyles} />,
-        },
-      ],
+      children: downloadChildren,
     });
   }
 

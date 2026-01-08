@@ -146,7 +146,16 @@ export const hydrateExplore =
       // note this will add `form_data` to state,
       // which will be manipulable by future reducers.
       can_add: findPermission('can_write', 'Chart', user?.roles),
-      can_download: findPermission('can_csv', 'Superset', user?.roles),
+      // Data export permission with backward compatibility for can_csv
+      can_download:
+        findPermission('can_export_data', 'Superset', user?.roles) ||
+        findPermission('can_csv', 'Superset', user?.roles),
+      can_export_image: findPermission(
+        'can_export_image',
+        'Superset',
+        user?.roles,
+      ),
+      can_copy_data: findPermission('can_copy_data', 'Superset', user?.roles),
       can_overwrite: ensureIsArray(slice?.owners).includes(
         user?.userId as number,
       ),

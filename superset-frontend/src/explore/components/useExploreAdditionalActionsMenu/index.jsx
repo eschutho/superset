@@ -122,6 +122,7 @@ export const MenuTrigger = styled(Button)`
 export const useExploreAdditionalActionsMenu = (
   latestQueryFormData,
   canDownloadCSV,
+  canExportImage = true,
   slice,
   onOpenInEditor,
   onOpenPropertiesModal,
@@ -585,26 +586,30 @@ export const useExploreAdditionalActionsMenu = (
           );
         },
       },
-      {
-        key: MENU_KEYS.EXPORT_ALL_SCREENSHOT,
-        label: t('Export screenshot (jpeg)'),
-        icon: <Icons.FileImageOutlined />,
-        onClick: e => {
-          downloadAsImage(
-            '.panel-body .chart-container',
-            slice?.slice_name ?? t('New chart'),
-            true,
-            theme,
-          )(e.domEvent);
-          setIsDropdownVisible(false);
-          dispatch(
-            logEvent(LOG_ACTIONS_CHART_DOWNLOAD_AS_IMAGE, {
-              chartId: slice?.slice_id,
-              chartName: slice?.slice_name,
-            }),
-          );
-        },
-      },
+      ...(canExportImage
+        ? [
+            {
+              key: MENU_KEYS.EXPORT_ALL_SCREENSHOT,
+              label: t('Export screenshot (jpeg)'),
+              icon: <Icons.FileImageOutlined />,
+              onClick: e => {
+                downloadAsImage(
+                  '.panel-body .chart-container',
+                  slice?.slice_name ?? t('New chart'),
+                  true,
+                  theme,
+                )(e.domEvent);
+                setIsDropdownVisible(false);
+                dispatch(
+                  logEvent(LOG_ACTIONS_CHART_DOWNLOAD_AS_IMAGE, {
+                    chartId: slice?.slice_id,
+                    chartName: slice?.slice_name,
+                  }),
+                );
+              },
+            },
+          ]
+        : []),
       {
         key: MENU_KEYS.EXPORT_TO_XLSX,
         label: t('Export to Excel'),
@@ -689,26 +694,30 @@ export const useExploreAdditionalActionsMenu = (
           );
         },
       },
-      {
-        key: MENU_KEYS.EXPORT_CURRENT_SCREENSHOT,
-        label: t('Export screenshot (jpeg)'),
-        icon: <Icons.FileImageOutlined />,
-        onClick: e => {
-          downloadAsImage(
-            '.panel-body .chart-container',
-            slice?.slice_name ?? t('New chart'),
-            true,
-            theme,
-          )(e.domEvent);
-          setIsDropdownVisible(false);
-          dispatch(
-            logEvent(LOG_ACTIONS_CHART_DOWNLOAD_AS_IMAGE, {
-              chartId: slice?.slice_id,
-              chartName: slice?.slice_name,
-            }),
-          );
-        },
-      },
+      ...(canExportImage
+        ? [
+            {
+              key: MENU_KEYS.EXPORT_CURRENT_SCREENSHOT,
+              label: t('Export screenshot (jpeg)'),
+              icon: <Icons.FileImageOutlined />,
+              onClick: e => {
+                downloadAsImage(
+                  '.panel-body .chart-container',
+                  slice?.slice_name ?? t('New chart'),
+                  true,
+                  theme,
+                )(e.domEvent);
+                setIsDropdownVisible(false);
+                dispatch(
+                  logEvent(LOG_ACTIONS_CHART_DOWNLOAD_AS_IMAGE, {
+                    chartId: slice?.slice_id,
+                    chartName: slice?.slice_name,
+                  }),
+                );
+              },
+            },
+          ]
+        : []),
       {
         key: MENU_KEYS.EXPORT_CURRENT_XLSX,
         label: t('Export to Excel'),
@@ -882,6 +891,7 @@ export const useExploreAdditionalActionsMenu = (
     theme.sizeUnit,
     ownState,
     hasExportCurrentView,
+    canExportImage,
   ]);
 
   // Return streaming modal state and handlers for parent to render

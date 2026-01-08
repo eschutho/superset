@@ -727,6 +727,8 @@ function ExploreViewContainer(props) {
         actions={props.actions}
         canOverwrite={props.can_overwrite}
         canDownload={props.can_download}
+        canExportImage={props.can_export_image}
+        canCopyData={props.can_copy_data}
         dashboardId={props.dashboardId}
         colorScheme={props.dashboardColorScheme}
         isStarred={props.isStarred}
@@ -993,6 +995,8 @@ function mapStateToProps(state) {
     controls: explore.controls,
     can_add: !!explore.can_add,
     can_download: !!explore.can_download,
+    can_export_image: explore.can_export_image !== false,
+    can_copy_data: explore.can_copy_data !== false,
     can_overwrite: !!explore.can_overwrite,
     column_formats: datasource?.column_formats ?? null,
     containerId: slice

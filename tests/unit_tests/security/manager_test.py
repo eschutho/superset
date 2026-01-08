@@ -1186,3 +1186,100 @@ def test_get_catalogs_accessible_by_user_schema_access(
     catalogs = {"catalog1", "catalog2"}
 
     assert sm.get_catalogs_accessible_by_user(database, catalogs) == {"catalog2"}
+
+
+def test_can_export_data_with_new_permission(
+    mocker: MockerFixture,
+    app_context: None,
+) -> None:
+    """
+    Test that can_export_data returns True when user has can_export_data permission.
+    """
+    sm = SupersetSecurityManager(appbuilder)
+    mocker.patch.object(
+        sm, "can_access", side_effect=lambda perm, vm: perm == "can_export_data"
+    )
+
+    assert sm.can_export_data() is True
+
+
+def test_can_export_data_with_legacy_permission(
+    mocker: MockerFixture,
+    app_context: None,
+) -> None:
+    """
+    Test that can_export_data returns True when user has legacy can_csv permission.
+    """
+    sm = SupersetSecurityManager(appbuilder)
+    mocker.patch.object(sm, "can_access", side_effect=lambda perm, vm: perm == "can_csv")
+
+    assert sm.can_export_data() is True
+
+
+def test_can_export_data_without_permission(
+    mocker: MockerFixture,
+    app_context: None,
+) -> None:
+    """
+    Test that can_export_data returns False when user has neither permission.
+    """
+    sm = SupersetSecurityManager(appbuilder)
+    mocker.patch.object(sm, "can_access", return_value=False)
+
+    assert sm.can_export_data() is False
+
+
+def test_can_export_image_with_permission(
+    mocker: MockerFixture,
+    app_context: None,
+) -> None:
+    """
+    Test that can_export_image returns True when user has can_export_image permission.
+    """
+    sm = SupersetSecurityManager(appbuilder)
+    mocker.patch.object(
+        sm, "can_access", side_effect=lambda perm, vm: perm == "can_export_image"
+    )
+
+    assert sm.can_export_image() is True
+
+
+def test_can_export_image_without_permission(
+    mocker: MockerFixture,
+    app_context: None,
+) -> None:
+    """
+    Test that can_export_image returns False when user lacks the permission.
+    """
+    sm = SupersetSecurityManager(appbuilder)
+    mocker.patch.object(sm, "can_access", return_value=False)
+
+    assert sm.can_export_image() is False
+
+
+def test_can_copy_data_with_permission(
+    mocker: MockerFixture,
+    app_context: None,
+) -> None:
+    """
+    Test that can_copy_data returns True when user has can_copy_data permission.
+    """
+    sm = SupersetSecurityManager(appbuilder)
+    mocker.patch.object(
+        sm, "can_access", side_effect=lambda perm, vm: perm == "can_copy_data"
+    )
+
+    assert sm.can_copy_data() is True
+
+
+def test_can_copy_data_without_permission(
+    mocker: MockerFixture,
+    app_context: None,
+) -> None:
+    """
+    Test that can_copy_data returns False when user lacks the permission.
+    """
+    sm = SupersetSecurityManager(appbuilder)
+    mocker.patch.object(sm, "can_access", return_value=False)
+
+    assert sm.can_copy_data() is False
