@@ -25,6 +25,7 @@ from pydantic import ValidationError
 from superset.mcp_service.chart.schemas import (
     ColumnRef,
     GenerateChartRequest,
+    GenerateExploreLinkRequest,
     parse_chart_config,
     TableChartConfig,
     XYChartConfig,
@@ -429,16 +430,34 @@ class TestRowLimit:
 
 
 class TestTableChartConfigExtraFields:
-    """Test TableChartConfig rejects unknown fields."""
+    """Test TableChartConfig silently ignores unknown/Superset-native fields."""
 
-    def test_unknown_fields_raise_error(self) -> None:
-        """Test that unknown fields raise ValueError with valid field list."""
-        with pytest.raises(ValidationError, match="Unknown field 'foo'"):
-            TableChartConfig(
-                chart_type="table",
-                columns=[ColumnRef(name="product")],
-                foo="bar",
-            )
+    def test_unknown_fields_silently_ignored(self) -> None:
+        """Unknown fields are dropped rather than raising an error."""
+        config = TableChartConfig(
+            chart_type="table",
+            columns=[ColumnRef(name="product")],
+            foo="bar",
+        )
+        assert len(config.columns) == 1
+
+    def test_superset_native_fields_silently_ignored(self) -> None:
+        """Superset form_data fields (adhoc_filters, order_desc, etc.) are dropped."""
+        config = TableChartConfig.model_validate(
+            {
+                "chart_type": "table",
+                "columns": [{"name": "product"}],
+                "adhoc_filters": [],
+                "align_pn": True,
+                "color_pn": False,
+                "column_config": {},
+                "conditional_formatting": [],
+                "include_search": True,
+                "order_desc": True,
+                "show_cell_bars": True,
+            }
+        )
+        assert len(config.columns) == 1
 
 
 class TestAliasChoices:
@@ -546,16 +565,16 @@ class TestUnknownFieldDetection:
                 }
             )
 
-    def test_table_chart_unknown_field(self) -> None:
-        """Test unknown field detection on TableChartConfig."""
-        with pytest.raises(ValidationError, match="Unknown field"):
-            TableChartConfig.model_validate(
-                {
-                    "chart_type": "table",
-                    "columns": [{"name": "product"}],
-                    "invalid_param": "test",
-                }
-            )
+    def test_table_chart_unknown_field_silently_ignored(self) -> None:
+        """TableChartConfig silently drops unknown fields (extra='ignore')."""
+        config = TableChartConfig.model_validate(
+            {
+                "chart_type": "table",
+                "columns": [{"name": "product"}],
+                "invalid_param": "test",
+            }
+        )
+        assert len(config.columns) == 1
 
     def test_known_aliases_not_flagged_as_unknown(self) -> None:
         """Test that known aliases pass validation without errors."""
@@ -672,3 +691,92 @@ class TestParseChartConfig:
     def test_coerce_invalid_json_string_raises(self) -> None:
         with pytest.raises(ValidationError):
             GenerateChartRequest(dataset_id=1, config="not valid json")
+
+
+class TestTableChartConfigColumnNormalization:
+    """Test that TableChartConfig.columns accepts plain strings."""
+
+    def test_plain_strings_converted_to_column_refs(self) -> None:
+        config = TableChartConfig.model_validate(
+            {
+                "chart_type": "table",
+                "all_columns": ["team_name", "ds", "revenue"],
+            }
+        )
+        assert len(config.columns) == 3
+        assert config.columns[0].name == "team_name"
+        assert config.columns[1].name == "ds"
+        assert config.columns[2].name == "revenue"
+
+    def test_mixed_strings_and_dicts_normalised(self) -> None:
+        config = TableChartConfig.model_validate(
+            {
+                "chart_type": "table",
+                "columns": [
+                    "plain_col",
+                    {"name": "rich_col", "aggregate": "SUM"},
+                ],
+            }
+        )
+        assert config.columns[0].name == "plain_col"
+        assert config.columns[0].aggregate is None
+        assert config.columns[1].name == "rich_col"
+        assert config.columns[1].aggregate == "SUM"
+
+    def test_column_ref_dicts_unchanged(self) -> None:
+        config = TableChartConfig.model_validate(
+            {
+                "chart_type": "table",
+                "columns": [{"name": "product", "label": "Product Name"}],
+            }
+        )
+        assert config.columns[0].name == "product"
+        assert config.columns[0].label == "Product Name"
+
+
+class TestGenerateExploreLinkRequestValidation:
+    """Test top-level chart field detection in GenerateExploreLinkRequest."""
+
+    def test_top_level_chart_fields_raise_helpful_error(self) -> None:
+        with pytest.raises(
+            ValidationError,
+            match="were passed at the top level",
+        ):
+            GenerateExploreLinkRequest.model_validate(
+                {
+                    "dataset_id": 1,
+                    "viz_type": "table",
+                    "all_columns": ["team_name"],
+                }
+            )
+
+    def test_error_message_lists_misplaced_fields(self) -> None:
+        with pytest.raises(ValidationError, match="all_columns"):
+            GenerateExploreLinkRequest.model_validate(
+                {
+                    "dataset_id": 1,
+                    "all_columns": ["col"],
+                }
+            )
+
+    def test_error_mentions_config_wrapper(self) -> None:
+        with pytest.raises(ValidationError, match="'config'"):
+            GenerateExploreLinkRequest.model_validate(
+                {
+                    "dataset_id": 1,
+                    "chart_type": "table",
+                }
+            )
+
+    def test_valid_nested_config_accepted(self) -> None:
+        req = GenerateExploreLinkRequest.model_validate(
+            {
+                "dataset_id": 1,
+                "config": {
+                    "chart_type": "table",
+                    "columns": [{"name": "col"}],
+                },
+            }
+        )
+        assert req.dataset_id == 1
+        assert req.config["chart_type"] == "table"

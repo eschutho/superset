@@ -989,7 +989,9 @@ class BigNumberChartConfig(UnknownFieldCheckMixin):
         return self
 
 
-class TableChartConfig(UnknownFieldCheckMixin):
+class TableChartConfig(BaseModel):
+    # extra="ignore" silently drops Superset-native form_data fields (e.g.
+    # adhoc_filters, align_pn, order_desc) that LLMs may pass directly.
     model_config = ConfigDict(extra="ignore", populate_by_name=True)
 
     chart_type: Literal["table"] = "table"
@@ -1012,6 +1014,14 @@ class TableChartConfig(UnknownFieldCheckMixin):
         validation_alias=AliasChoices("sort_by", "order_by_cols", "order_by"),
     )
     row_limit: int = Field(1000, description="Max rows returned", ge=1, le=50000)
+
+    @field_validator("columns", mode="before")
+    @classmethod
+    def normalize_column_strings(cls, v: Any) -> Any:
+        """Accept plain column name strings in addition to ColumnRef dicts."""
+        if isinstance(v, list):
+            return [{"name": item} if isinstance(item, str) else item for item in v]
+        return v
 
     @model_validator(mode="after")
     def validate_unique_column_labels(self) -> "TableChartConfig":
@@ -1365,9 +1375,58 @@ class GenerateChartRequest(QueryCacheControl):
         return self
 
 
+_CHART_CONFIG_FIELDS = frozenset(
+    {
+        "chart_type",
+        "viz_type",
+        "all_columns",
+        "columns",
+        "groupby",
+        "metrics",
+        "adhoc_filters",
+        "x",
+        "y",
+        "kind",
+        "x_axis",
+        "y_axis",
+        "metric",
+        "dimension",
+        "rows",
+        "y_secondary",
+        "filters",
+        "sort_by",
+        "order_by",
+        "order_by_cols",
+        "row_limit",
+        "group_by",
+        "time_grain",
+        "query_mode",
+        "stacked",
+        "stack",
+        "orientation",
+        "handlebars_template",
+    }
+)
+
+
 class GenerateExploreLinkRequest(FormDataCacheControl):
     dataset_id: int | str = Field(..., description="Dataset identifier (ID, UUID)")
     config: Dict[str, Any] = Field(..., description=_CHART_CONFIG_DESCRIPTION)
+
+    @model_validator(mode="before")
+    @classmethod
+    def detect_top_level_chart_fields(cls, data: Any) -> Any:
+        if not isinstance(data, dict) or "config" in data:
+            return data
+        misplaced = sorted(_CHART_CONFIG_FIELDS & set(data.keys()))
+        if misplaced:
+            raise ValueError(
+                f"Chart config fields {misplaced} were passed at the top level. "
+                f"All chart configuration must be nested inside a 'config' object. "
+                f"Example: {{\"dataset_id\": 1, \"config\": "
+                f"{{\"chart_type\": \"table\", \"columns\": [{{\"name\": \"col\"}}]}}}}"
+            )
+        return data
 
     @field_validator("config", mode="before")
     @classmethod
