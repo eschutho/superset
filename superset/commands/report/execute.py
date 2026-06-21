@@ -1180,9 +1180,17 @@ class AsyncExecuteReportScheduleCommand(BaseCommand):
                 # for the same deterministic UUID and returns the
                 # already-committed row without a second INSERT.
                 if self._model.dashboard_id:
-                    BaseReportState(
-                        self._model, self._scheduled_dttm, self._execution_id
-                    ).get_dashboard_urls()
+                    try:
+                        BaseReportState(
+                            self._model, self._scheduled_dttm, self._execution_id
+                        ).get_dashboard_urls()
+                    except Exception:  # pylint: disable=broad-except
+                        logger.warning(
+                            "Failed to prewarm permalink for dashboard %s; "
+                            "state machine will retry",
+                            self._model.dashboard_id,
+                            exc_info=True,
+                        )
 
             start_time = datetime.utcnow()
             with override_user(user):
