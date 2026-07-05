@@ -58,6 +58,7 @@ export default function Option({
             text-align: center;
           `}
           role="button"
+          aria-label={t('Remove')}
           data-test="remove-control-button"
           onClick={onClickClose}
         >

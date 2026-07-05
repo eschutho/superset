@@ -348,6 +348,7 @@ export const OptionControlLabel = ({
     >
       <CloseContainer
         role="button"
+        aria-label={t('Remove')}
         data-test="remove-control-button"
         onClick={onRemove}
       >
