@@ -70,9 +70,9 @@ FEATURE_FLAGS = {
     "foo": "bar",
     "ENABLE_TEMPLATE_PROCESSING": True,
     "ALERT_REPORTS": True,
-    "AVOID_COLORS_COLLISION": True,
     "DRILL_TO_DETAIL": True,
     "DRILL_BY": True,
+    "GLOBAL_TASK_FRAMEWORK": True,
 }
 
 WEBDRIVER_BASEURL = "http://0.0.0.0:8081/"
@@ -85,6 +85,7 @@ def GET_FEATURE_FLAGS_FUNC(ff):  # noqa: N802
 
 
 TESTING = True
+TALISMAN_ENABLED = False
 WTF_CSRF_ENABLED = False
 
 FAB_ROLES = {"TestRole": [["Security", "menu_access"], ["List Users", "menu_access"]]}
@@ -133,6 +134,10 @@ ALERT_REPORTS_QUERY_EXECUTION_MAX_TRIES = 3
 
 FAB_ADD_SECURITY_API = True
 
+# Swagger UI / OpenAPI spec is opt-in in the base config; enable it for tests
+# that exercise the /api/v1/_openapi spec endpoint.
+FAB_API_SWAGGER_UI = True
+
 
 class CeleryConfig:
     broker_url = f"redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_CELERY_DB}"
@@ -148,4 +153,8 @@ CUSTOM_TEMPLATE_PROCESSORS = {
 }
 
 PRESERVE_CONTEXT_ON_EXCEPTION = False
+
+# Dashboard API: Return only custom tags (performance optimization)
+DASHBOARD_LIST_CUSTOM_TAGS_ONLY = True
+
 print("Loaded TEST config for INTEGRATION tests")

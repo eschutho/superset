@@ -23,6 +23,7 @@ from superset.extensions import cache_manager, celery_app
 from superset.utils.slack import (
     get_channels_with_search,
     SLACK_CHANNELS_CACHE_KEY,
+    SLACK_CHANNELS_CONTINUATION_CURSOR_KEY,
     SlackChannelTypes,
 )
 
@@ -106,6 +107,13 @@ def cache_channels() -> None:
         cache_manager.cache.set(
             SLACK_CHANNELS_CACHE_KEY, all_channels, timeout=cache_timeout
         )
+        # A prior partial self-seed (from a synchronous cache-miss request)
+        # may have left a continuation cursor behind. Now that the cache holds
+        # the complete list, clear it - otherwise it lingers and is misread as
+        # "the cache is still truncated", triggering a spurious live API call
+        # against a possibly-expired Slack cursor the next time pagination
+        # reaches the end of this now-complete list.
+        cache_manager.cache.delete(SLACK_CHANNELS_CONTINUATION_CURSOR_KEY)
 
         logger.info("Slack channels cache warm-up completed successfully")
 

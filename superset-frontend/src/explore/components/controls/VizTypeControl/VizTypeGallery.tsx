@@ -29,8 +29,8 @@ import {
 
 import Fuse from 'fuse.js';
 import cx from 'classnames';
+import { t } from '@apache-superset/core/translation';
 import {
-  t,
   ChartMetadata,
   chartLabelWeight,
   chartLabelExplanations,
@@ -41,7 +41,7 @@ import {
   SupersetTheme,
   useTheme,
   isThemeDark,
-} from '@apache-superset/core/ui';
+} from '@apache-superset/core/theme';
 import { Input, Collapse, Tooltip, Label } from '@superset-ui/core/components';
 import { Icons } from '@superset-ui/core/components/Icons';
 import { nativeFilterGate } from 'src/dashboard/components/nativeFilters/utils';
@@ -778,7 +778,11 @@ export default function VizTypeGallery(props: VizTypeGalleryProps) {
           suffix={
             <InputIconAlignment>
               {searchInputValue && (
-                <Icons.CloseOutlined iconSize="m" onClick={stopSearching} />
+                <Icons.CloseOutlined
+                  iconSize="m"
+                  onClick={stopSearching}
+                  aria-label={t('Clear search')}
+                />
               )}
             </InputIconAlignment>
           }

@@ -16,8 +16,9 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { t } from '@superset-ui/core';
-import { styled, Alert } from '@apache-superset/core/ui';
+import { t } from '@apache-superset/core/translation';
+import { Alert } from '@apache-superset/core/components';
+import { styled } from '@apache-superset/core/theme';
 import { Icons } from '@superset-ui/core/components/Icons';
 import { Loading } from '@superset-ui/core/components';
 import Table, {
@@ -25,6 +26,7 @@ import Table, {
   TableSize,
 } from '@superset-ui/core/components/Table';
 import { DatasetObject } from 'src/features/datasets/AddDataset/types';
+import { openInNewTab, stripAppRoot } from 'src/utils/navigationUtils';
 import { ITableColumn } from './types';
 import MessageContent from './MessageContent';
 
@@ -49,19 +51,18 @@ interface StyledHeaderProps {
   position: EPosition;
 }
 
-const LOADER_WIDTH = 200;
-const SPINNER_WIDTH = 120;
-const HALF = 0.5;
 const MARGIN_MULTIPLIER = 3;
 
 const StyledHeader = styled.div<StyledHeaderProps>`
   ${({ theme, position }) => `
   position: ${position};
+  display: flex;
+  align-items: center;
   margin: ${theme.sizeUnit * (MARGIN_MULTIPLIER + 1)}px
     ${theme.sizeUnit * MARGIN_MULTIPLIER}px
     ${theme.sizeUnit * MARGIN_MULTIPLIER}px
     ${theme.sizeUnit * (MARGIN_MULTIPLIER + 3)}px;
-  font-size: ${theme.sizeUnit * 6}px;
+  font-size: ${theme.sizeUnit * 5}px;
   font-weight: ${theme.fontWeightStrong};
   padding-bottom: ${theme.sizeUnit * MARGIN_MULTIPLIER}px;
 
@@ -71,7 +72,6 @@ const StyledHeader = styled.div<StyledHeaderProps>`
 
   .anticon:first-of-type {
     margin-right: ${theme.sizeUnit * 2}px;
-    vertical-align: text-top;
   }
 
   `}
@@ -104,20 +104,15 @@ const LoaderContainer = styled.div`
 
 const StyledLoader = styled.div`
   ${({ theme }) => `
-  max-width: 50%;
-  width: ${LOADER_WIDTH}px;
-
-  .ant-image {
-    width: ${SPINNER_WIDTH}px;
-    margin-left: ${(LOADER_WIDTH - SPINNER_WIDTH) * HALF}px;
-  }
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 
   div {
-    width: 100%;
     margin-top: ${theme.sizeUnit * MARGIN_MULTIPLIER}px;
     text-align: center;
     font-weight: ${theme.fontWeightNormal};
-    font-size: ${theme.fontSizeLG}px;
+    font-size: ${theme.fontSize}px;
     color: ${theme.colorTextSecondary};
   }
   `}
@@ -189,7 +184,7 @@ export const tableColumnDefinition: ColumnsType<ITableColumn> = [
     dataIndex: 'type',
     key: 'type',
     width: '100px',
-    sorter: (a: ITableColumn, b: ITableColumn) => a.name.localeCompare(b.name),
+    sorter: (a: ITableColumn, b: ITableColumn) => a.type.localeCompare(b.type),
   },
 ];
 
@@ -233,11 +228,12 @@ const renderExistingDatasetAlert = (dataset?: DatasetObject) => (
         <span
           role="button"
           onClick={() => {
-            window.open(
-              dataset?.explore_url,
-              '_blank',
-              'noreferrer noopener popup=false',
-            );
+            if (dataset?.explore_url) {
+              // `explore_url` is router-relative from the backend (rooted under
+              // a subdirectory deployment); strip the root so openInNewTab's
+              // ensureAppRoot re-prefixes it once rather than doubling it.
+              openInNewTab(stripAppRoot(dataset.explore_url));
+            }
           }}
           tabIndex={0}
           className="view-dataset-button"
@@ -268,7 +264,7 @@ const DatasetPanel = ({
     loader = (
       <LoaderContainer>
         <StyledLoader>
-          <Loading position="inline-centered" />
+          <Loading position="inline-centered" size="m" />
           <div>{REFRESHING}</div>
         </StyledLoader>
       </LoaderContainer>
@@ -331,7 +327,7 @@ const DatasetPanel = ({
             }
             title={tableName || ''}
           >
-            <Icons.InsertRowAboveOutlined iconSize="xxl" />
+            <Icons.InsertRowAboveOutlined iconSize="xl" />
             {tableName}
           </StyledHeader>
         </>

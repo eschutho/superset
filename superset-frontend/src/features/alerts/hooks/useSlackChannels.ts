@@ -17,7 +17,8 @@
  * under the License.
  */
 import { useCallback, useRef, useState } from 'react';
-import { logging, SupersetClient, t } from '@superset-ui/core';
+import { t } from '@apache-superset/core/translation';
+import { logging, SupersetClient } from '@superset-ui/core';
 import rison from 'rison';
 import { SlackChannel } from '../types';
 

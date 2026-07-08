@@ -16,10 +16,15 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { styled, useTheme } from '@apache-superset/core/ui';
+import {
+  styled,
+  useTheme,
+  type SupersetTheme,
+} from '@apache-superset/core/theme';
 import { CustomCellRendererProps } from '@superset-ui/core/components/ThemedAgGridReact';
-import { BasicColorFormatterType, InputColumn } from '../types';
+import { BasicColorFormatterType, InputColumn, ValueRange } from '../types';
 import { useIsDark } from '../utils/useTableTheme';
+import getRowBasicColorFormatter from '../utils/getRowBasicColorFormatter';
 
 const StyledTotalCell = styled.div`
   ${() => `
@@ -53,8 +58,6 @@ const Bar = styled.div<{
   z-index: 1;
 `;
 
-type ValueRange = [number, number];
-
 /**
  * Cell background width calculation for horizontal bar chart
  */
@@ -64,7 +67,7 @@ function cellWidth({
   alignPositiveNegative,
 }: {
   value: number;
-  valueRange: ValueRange;
+  valueRange: [number, number];
   alignPositiveNegative: boolean;
 }) {
   const [minValue, maxValue] = valueRange;
@@ -89,7 +92,7 @@ function cellOffset({
   alignPositiveNegative,
 }: {
   value: number;
-  valueRange: ValueRange;
+  valueRange: [number, number];
   alignPositiveNegative: boolean;
 }) {
   if (alignPositiveNegative) {
@@ -114,7 +117,7 @@ function cellBackground({
   value: number;
   colorPositiveNegative: boolean;
   isDarkTheme: boolean;
-  theme: any;
+  theme: SupersetTheme | null;
 }) {
   if (!colorPositiveNegative) {
     return 'transparent'; // Use transparent background when colorPositiveNegative is false
@@ -134,7 +137,7 @@ export const NumericCellRenderer = (
     basicColorFormatters: {
       [Key: string]: BasicColorFormatterType;
     }[];
-    valueRange: any;
+    valueRange: ValueRange;
     alignPositiveNegative: boolean;
     colorPositiveNegative: boolean;
   },
@@ -161,13 +164,13 @@ export const NumericCellRenderer = (
   let arrow = '';
   let arrowColor = '';
   if (hasBasicColorFormatters && col?.metricName) {
-    arrow =
-      basicColorFormatters?.[node?.rowIndex as number]?.[col.metricName]
-        ?.mainArrow;
-    arrowColor =
-      basicColorFormatters?.[node?.rowIndex as number]?.[
-        col.metricName
-      ]?.arrowColor?.toLowerCase();
+    const rowFormatter = getRowBasicColorFormatter(
+      node,
+      node?.rowIndex,
+      basicColorFormatters,
+    )?.[col.metricName];
+    arrow = rowFormatter?.mainArrow ?? '';
+    arrowColor = rowFormatter?.arrowColor?.toLowerCase() ?? '';
   }
 
   const alignment =

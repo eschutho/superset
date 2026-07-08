@@ -18,20 +18,23 @@
  */
 import { FormatLocaleDefinition } from 'd3-format';
 import { TimeLocaleDefinition } from 'd3-time-format';
-import { isPlainObject } from 'lodash';
+import { isPlainObject } from 'lodash-es';
 import { Languages } from 'src/features/home/LanguagePicker';
-import type {
+import {
   AnyThemeConfig,
   SerializableThemeConfig,
-} from '@apache-superset/core/ui';
+} from '@apache-superset/core/theme';
 import type {
   ColorSchemeConfig,
   FeatureFlagMap,
   JsonObject,
-  LanguagePack,
-  Locale,
   SequentialSchemeConfig,
 } from '@superset-ui/core';
+
+import {
+  type LanguagePack,
+  type Locale,
+} from '@apache-superset/core/translation';
 
 export type User = {
   createdOn?: string;
@@ -52,6 +55,7 @@ export interface PermissionsAndRoles {
     datasource_access?: string[];
   };
   roles: UserRoles;
+  groups: string[];
 }
 
 export type UserWithPermissionsAndRoles = User & PermissionsAndRoles;
@@ -95,6 +99,7 @@ export interface BrandProps {
   alt: string;
   tooltip: string;
   text: string;
+  hide_logo?: boolean;
 }
 
 export interface NavBarProps {
@@ -166,6 +171,8 @@ export interface CommonBootstrapData {
   d3_format: Partial<FormatLocaleDefinition>;
   d3_time_format: Partial<TimeLocaleDefinition>;
   pdf_compression_level: 'NONE' | 'FAST' | 'MEDIUM' | 'SLOW';
+  user_subject_id?: number;
+  user_subjects?: number[];
 }
 
 export interface BootstrapData {
@@ -174,6 +181,9 @@ export interface BootstrapData {
   config?: any;
   embedded?: {
     dashboard_id: string;
+    // Domains allowed to embed this dashboard. An empty/undefined list means
+    // any domain is allowed (no restriction).
+    allowed_domains?: string[];
   };
   requested_query?: JsonObject;
 }

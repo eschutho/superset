@@ -16,12 +16,14 @@
 # under the License.
 
 
+import functools
 import logging
+import warnings
 from typing import Any, Optional
 
 from flask import current_app as app
 from slack_sdk import WebClient
-from slack_sdk.errors import SlackApiError
+from slack_sdk.errors import SlackApiError, SlackClientError as SlackSDKClientError
 from slack_sdk.http_retry.builtin_handlers import RateLimitErrorRetryHandler
 
 from superset import feature_flag_manager
@@ -37,10 +39,40 @@ SLACK_CHANNELS_CONTINUATION_CURSOR_KEY = (
     f"{SLACK_CHANNELS_CACHE_KEY}_continuation_cursor"
 )
 
+_SLACK_V1_DEPRECATION_MESSAGE = (
+    "Slack v1 (the legacy `Slack` recipient type and `files.upload` API) is "
+    "deprecated and will be removed in the next major release. Slack retired "
+    "the `files.upload` endpoint in 2025, so v1 file uploads no longer work; "
+    "only text-only `chat_postMessage` sends still succeed. Grant your Slack "
+    "bot the `channels:read` and `groups:read` scopes so existing v1 "
+    "recipients can be auto-upgraded to SlackV2 on "
+    "their next send."
+)
+
+
+# functools.cache gives us a process-lifetime, thread-safe one-shot guard
+# without the read-then-write race that bare module globals would have under
+# multi-threaded WSGI workers. The cached return value (None) is irrelevant —
+# we only care that the body executes at most once per process.
+@functools.cache
+def _emit_v1_flag_off_deprecation() -> None:
+    warnings.warn(_SLACK_V1_DEPRECATION_MESSAGE, DeprecationWarning, stacklevel=3)
+    logger.warning(
+        "ALERT_REPORT_SLACK_V2 is disabled; %s", _SLACK_V1_DEPRECATION_MESSAGE
+    )
+
+
+@functools.cache
+def _emit_v1_scope_missing_deprecation() -> None:
+    warnings.warn(_SLACK_V1_DEPRECATION_MESSAGE, DeprecationWarning, stacklevel=3)
+
 
 class SlackChannelTypes(StrEnum):
     PUBLIC = "public_channel"
     PRIVATE = "private_channel"
+
+
+_SLACK_CONVERSATION_TYPES = ",".join(SlackChannelTypes)
 
 
 class SlackClientError(Exception):
@@ -51,7 +83,11 @@ def get_slack_client() -> WebClient:
     token: str = app.config["SLACK_API_TOKEN"]
     if callable(token):
         token = token()
-    client = WebClient(token=token, proxy=app.config["SLACK_PROXY"])
+    client = WebClient(
+        token=token,
+        proxy=app.config["SLACK_PROXY"],
+        timeout=app.config["SLACK_API_TIMEOUT"],
+    )
 
     max_retry_count = app.config.get("SLACK_API_RATE_LIMIT_RETRY_COUNT", 2)
     rate_limit_handler = RateLimitErrorRetryHandler(max_retry_count=max_retry_count)
@@ -62,16 +98,37 @@ def get_slack_client() -> WebClient:
     return client
 
 
+def get_team_id() -> Optional[str]:
+    """
+    Return the Slack workspace (team) ID to target, or None.
+
+    On an Enterprise Grid org, an org-scoped token spans multiple workspaces, so
+    workspace-scoped methods such as ``conversations.list`` need a ``team_id`` to
+    indicate which workspace to act on. The value is read from the ``SLACK_TEAM_ID``
+    config var, which may be a string or a callable (mirroring ``SLACK_API_TOKEN``);
+    when it is unset (the default for workspace-level tokens) None is returned and
+    no ``team_id`` is sent, preserving the prior behavior.
+    """
+    team_id = app.config.get("SLACK_TEAM_ID")
+    if callable(team_id):
+        team_id = team_id()
+    return team_id or None
+
+
 def _fetch_channels_without_search(
     client: WebClient,
     channel_schema: SlackChannelSchema,
     types_param: str,
     cursor: Optional[str],
     limit: int,
+    team_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """Fetch channels without search filtering, paginating for large limits."""
     channels: list[SlackChannelSchema] = []
     slack_cursor = cursor
+    extra_params: dict[str, str] = {}
+    if team_id:
+        extra_params["team_id"] = team_id
 
     while True:
         response = client.conversations_list(
@@ -79,6 +136,7 @@ def _fetch_channels_without_search(
             cursor=slack_cursor,
             exclude_archived=True,
             types=types_param,
+            **extra_params,
         )
 
         page_channels = [
@@ -106,6 +164,7 @@ def _fetch_channels_with_search(
     exact_match: bool,
     cursor: Optional[str],
     limit: int,
+    team_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """Fetch channels with search filtering, streaming through pages."""
     matches: list[SlackChannelSchema] = []
@@ -113,6 +172,9 @@ def _fetch_channels_with_search(
     search_terms = [
         term.strip().lower() for term in search_string.split(",") if term.strip()
     ]
+    extra_params: dict[str, str] = {}
+    if team_id:
+        extra_params["team_id"] = team_id
 
     while len(matches) < limit:
         response = client.conversations_list(
@@ -120,6 +182,7 @@ def _fetch_channels_with_search(
             cursor=slack_cursor,
             exclude_archived=True,
             types=types_param,
+            **extra_params,
         )
 
         for channel_data in response.data["channels"]:
@@ -247,6 +310,14 @@ def _fetch_from_cache(  # noqa: C901
 
     # Check if we're trying to paginate beyond cached data
     if offset >= len(channels):
+        if search_string:
+            # A search with no matches within the cached window is a valid,
+            # complete empty result - it must not be confused with "cache is
+            # truncated, go continue the crawl live" below. Falling through to
+            # the continuation-cursor/live-API path here would mean every
+            # search term absent from a partially-warmed cache triggers a full
+            # live crawl of the remaining workspace on every keystroke.
+            return {"result": [], "next_cursor": None, "has_more": False}
         logger.info(
             "Pagination offset (%d) exceeds cached data (%d channels). "
             "Falling back to API.",
@@ -283,6 +354,67 @@ def _fetch_from_cache(  # noqa: C901
     }
 
 
+def _maybe_seed_cache_from_cold_fetch(
+    enable_caching: bool,
+    search_string: str,
+    types: Optional[list[SlackChannelTypes]],
+    cursor: Optional[str],
+    api_result: dict[str, Any],
+) -> None:
+    """
+    Opportunistically warm the cache from a synchronous, cache-miss API fetch.
+
+    This restores some caching benefit on installs where the ``cache_channels``
+    Celery task never runs (no worker, or a worker that doesn't import/route
+    ``superset.tasks.slack``) without ever blocking a request on a full
+    workspace crawl: it only stores the single page that was already fetched
+    to answer this request, plus a continuation cursor so later requests can
+    extend the cache incrementally via the existing cache-boundary/continuation
+    machinery in ``_fetch_from_cache``.
+
+    Only seeds for the unfiltered, first-page, no-search case:
+    - Slack filters ``types`` server-side, so a type-narrowed fetch is missing
+      real channels, not just "a view" of the full list.
+    - The search-path fetch helper only retains matches, not raw pages, so
+      there is no full-fidelity data available to seed with from a search.
+    """
+    if not enable_caching or cursor is not None or search_string:
+        return
+    if types and len(types) < len(SlackChannelTypes):
+        return
+
+    # Re-check immediately before writing to shrink the window where two
+    # concurrent cold requests both seed redundantly. A residual race is
+    # harmless (both fetch the same first page), so this isn't a lock.
+    if cache_manager.cache.get(SLACK_CHANNELS_CACHE_KEY):
+        return
+
+    channels = api_result.get("result") or []
+    if not channels:
+        return
+
+    cache_timeout = app.config["SLACK_CACHE_TIMEOUT"]
+    cache_manager.cache.set(SLACK_CHANNELS_CACHE_KEY, channels, timeout=cache_timeout)
+
+    next_cursor = api_result.get("next_cursor")
+    if next_cursor:
+        cache_manager.cache.set(
+            SLACK_CHANNELS_CONTINUATION_CURSOR_KEY, next_cursor, timeout=cache_timeout
+        )
+    else:
+        # Small workspace: this single page was everything. Defensively clear
+        # any stale continuation cursor from an earlier partial seed so future
+        # requests don't think the (now-complete) cache is still truncated.
+        cache_manager.cache.delete(SLACK_CHANNELS_CONTINUATION_CURSOR_KEY)
+
+    logger.info(
+        "Opportunistically seeded Slack channels cache with %d channels "
+        "(has_more=%s) from a synchronous cache-miss fetch",
+        len(channels),
+        bool(next_cursor),
+    )
+
+
 def _fetch_from_api(
     search_string: str,
     types: Optional[list[SlackChannelTypes]],
@@ -309,6 +441,7 @@ def _fetch_from_api(
     try:
         client = get_slack_client()
         channel_schema = SlackChannelSchema()
+        team_id = get_team_id()
 
         types_param = (
             ",".join(types)
@@ -318,7 +451,7 @@ def _fetch_from_api(
 
         if not search_string:
             return _fetch_channels_without_search(
-                client, channel_schema, types_param, cursor, limit
+                client, channel_schema, types_param, cursor, limit, team_id
             )
 
         return _fetch_channels_with_search(
@@ -329,6 +462,7 @@ def _fetch_from_api(
             exact_match,
             cursor,
             limit,
+            team_id,
         )
 
     except SlackApiError as ex:
@@ -429,23 +563,80 @@ def get_channels_with_search(
 
     # API path for real Slack cursors
     logger.debug("Using API path")
-    return _fetch_from_api(search_string, types, exact_match, cursor, limit)
+    api_result = _fetch_from_api(search_string, types, exact_match, cursor, limit)
+    _maybe_seed_cache_from_cold_fetch(enable_caching, search_string, types, cursor, api_result)
+    return api_result
+
+
+_SCOPE_MISSING_ERROR_CODES = frozenset(
+    {"missing_scope", "not_allowed_token_type", "no_permission"}
+)
 
 
 def should_use_v2_api() -> bool:
     if not feature_flag_manager.is_feature_enabled("ALERT_REPORT_SLACK_V2"):
+        _emit_v1_flag_off_deprecation()
         return False
     try:
         client = get_slack_client()
-        client.conversations_list()
+        extra_params = {"types": _SLACK_CONVERSATION_TYPES}
+        team_id = get_team_id()
+        if team_id:
+            extra_params["team_id"] = team_id
+        client.conversations_list(
+            limit=1,
+            exclude_archived=True,
+            **extra_params,
+        )
         logger.info("Slack API v2 is available")
         return True
-    except SlackApiError:
-        # use the v1 api but warn with a deprecation message
+    except SlackApiError as ex:
+        # Only the scope-missing branch is a v1-deprecation signal; other
+        # SlackApiError codes (invalid_auth, ratelimited, server errors, etc.)
+        # are unrelated probe failures and should not be reported as a missing
+        # scope. We still fall back to v1 in both cases so a transient probe
+        # failure doesn't break sends — operators get an actionable log either
+        # way.
+        # `response` is normally a SlackResponse whose payload lives in `.data`,
+        # but the SDK (and our tests) can also hand back a plain dict. Read the
+        # error code in either shape so the scope-missing branch isn't missed.
+        response = getattr(ex, "response", None)
+        data = getattr(response, "data", None)
+        if not isinstance(data, dict):
+            data = response if isinstance(response, dict) else {}
+        error_code = data.get("error", "")
+        if error_code in _SCOPE_MISSING_ERROR_CODES:
+            # The DeprecationWarning fires once per process, but the actionable
+            # log line fires every send so operators see it in their report logs.
+            _emit_v1_scope_missing_deprecation()
+            logger.warning(
+                "Slack bot is missing the `channels:read` and `groups:read` "
+                "scopes; falling back to the deprecated "
+                "v1 API. %s",
+                _SLACK_V1_DEPRECATION_MESSAGE,
+            )
+        else:
+            logger.warning(
+                "Slack v2 probe failed with error %r; falling back to the "
+                "deprecated v1 API for this send. Investigate the underlying "
+                "Slack API error — this is not a missing-scope problem.",
+                error_code or str(ex),
+            )
+        return False
+    except SlackSDKClientError as ex:
+        # Non-API SDK failures (e.g. SlackClientNotConnectedError,
+        # SlackRequestError, SlackClientConfigurationError) are not subclasses
+        # of SlackApiError, so without this branch they would escape the probe
+        # raw. The caller runs this probe *before* the mapped Slack send `try`,
+        # so an un-caught probe error aborts the entire recipient loop instead
+        # of failing a single recipient. Treat any probe connection/transport
+        # failure as "v2 unavailable" and fall back to the deprecated v1 API,
+        # matching the SlackApiError behavior above.
         logger.warning(
-            """Your current Slack scopes are missing `channels:read`. Please add
-            this to your Slack app in order to continue using the v1 API. Support
-            for the old Slack API will be removed in Superset version 6.0.0."""
+            "Slack v2 probe failed to connect (%s: %s); falling back to the "
+            "deprecated v1 API for this send.",
+            type(ex).__name__,
+            ex,
         )
         return False
 

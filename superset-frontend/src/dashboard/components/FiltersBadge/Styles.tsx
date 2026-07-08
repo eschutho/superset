@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { css, styled } from '@apache-superset/core/ui';
+import { css, styled } from '@apache-superset/core/theme';
 
 export const Pill = styled.div`
   ${({ theme }) => css`
@@ -118,6 +118,18 @@ export const FiltersDetailsContainer = styled.div`
     overflow-x: hidden;
 
     color: ${theme.colorText};
+
+    /*
+     * The container is a non-interactive wrapper that receives focus
+     * programmatically only to capture keyboard navigation events. Suppress the
+     * default browser focus outline so the popover does not show a blue ring.
+     * Focusable items inside (FilterItem) provide their own :focus-visible
+     * styles for keyboard accessibility.
+     */
+    &:focus,
+    &:focus-visible {
+      outline: none;
+    }
   `}
 `;
 
