@@ -1166,6 +1166,167 @@ The server responded with: missing scope: channels:read"""
         assert result["has_more"] is False
         assert result["next_cursor"] is None
 
+
+# ---------------------------------------------------------------------------
+# Cache self-seeding: on a cache-miss request (no Celery worker ever ran
+# cache_channels), the synchronous API fallback opportunistically writes what
+# it fetched back into the cache, so Celery-less installs still get some
+# caching benefit instead of hitting live Slack on every request.
+# ---------------------------------------------------------------------------
+class TestCacheSelfSeeding:
+    def test_cold_cache_seeds_cache_and_continuation_cursor(self, mocker):
+        """A cold, unfiltered, first-page fetch seeds the cache + cursor."""
+        mocker.patch(
+            "superset.utils.slack.cache_manager.cache.get",
+            return_value=None,
+        )
+        mock_set = mocker.patch("superset.utils.slack.cache_manager.cache.set")
+        mocker.patch("superset.utils.slack.cache_manager.cache.delete")
+
+        channels = [{"name": "general", "id": "C1", "is_private": False}]
+        mock_data = {
+            "channels": channels,
+            "response_metadata": {"next_cursor": "next_page_cursor"},
+        }
+        mock_client = mocker.Mock()
+        mock_client.conversations_list.return_value = MockResponse(mock_data)
+        mocker.patch("superset.utils.slack.get_slack_client", return_value=mock_client)
+
+        get_channels_with_search()
+
+        set_calls = {c.args[0]: c.args[1] for c in mock_set.call_args_list}
+        assert set_calls["slack_conversations_list"][0]["id"] == "C1"
+        assert set_calls["slack_conversations_list_continuation_cursor"] == (
+            "next_page_cursor"
+        )
+
+    def test_cold_cache_small_workspace_clears_stale_continuation_cursor(
+        self, mocker
+    ):
+        """A cold fetch that returns everything in one page clears any stale
+        continuation cursor left behind by an earlier partial self-seed."""
+        mocker.patch(
+            "superset.utils.slack.cache_manager.cache.get",
+            return_value=None,
+        )
+        mock_set = mocker.patch("superset.utils.slack.cache_manager.cache.set")
+        mock_delete = mocker.patch("superset.utils.slack.cache_manager.cache.delete")
+
+        channels = [{"name": "general", "id": "C1", "is_private": False}]
+        mock_data = {
+            "channels": channels,
+            "response_metadata": {"next_cursor": None},
+        }
+        mock_client = mocker.Mock()
+        mock_client.conversations_list.return_value = MockResponse(mock_data)
+        mocker.patch("superset.utils.slack.get_slack_client", return_value=mock_client)
+
+        get_channels_with_search()
+
+        set_keys = {c.args[0] for c in mock_set.call_args_list}
+        assert "slack_conversations_list" in set_keys
+        assert "slack_conversations_list_continuation_cursor" not in set_keys
+        mock_delete.assert_called_with("slack_conversations_list_continuation_cursor")
+
+    def test_cold_cache_does_not_seed_for_search_string(self, mocker):
+        """Search-filtered fetches never have full-fidelity data to seed with."""
+        mocker.patch(
+            "superset.utils.slack.cache_manager.cache.get",
+            return_value=None,
+        )
+        mock_set = mocker.patch("superset.utils.slack.cache_manager.cache.set")
+        mocker.patch("superset.utils.slack.cache_manager.cache.delete")
+
+        channels = [{"name": "general", "id": "C1", "is_private": False}]
+        mock_data = {
+            "channels": channels,
+            "response_metadata": {"next_cursor": None},
+        }
+        mock_client = mocker.Mock()
+        mock_client.conversations_list.return_value = MockResponse(mock_data)
+        mocker.patch("superset.utils.slack.get_slack_client", return_value=mock_client)
+
+        get_channels_with_search(search_string="general")
+
+        mock_set.assert_not_called()
+
+    def test_cold_cache_does_not_seed_for_filtered_types(self, mocker):
+        """Slack filters `types` server-side, so a type-narrowed fetch is
+        missing real channels and must not be cached as if it were complete."""
+        mocker.patch(
+            "superset.utils.slack.cache_manager.cache.get",
+            return_value=None,
+        )
+        mock_set = mocker.patch("superset.utils.slack.cache_manager.cache.set")
+        mocker.patch("superset.utils.slack.cache_manager.cache.delete")
+
+        channels = [{"name": "general", "id": "C1", "is_private": False}]
+        mock_data = {
+            "channels": channels,
+            "response_metadata": {"next_cursor": None},
+        }
+        mock_client = mocker.Mock()
+        mock_client.conversations_list.return_value = MockResponse(mock_data)
+        mocker.patch("superset.utils.slack.get_slack_client", return_value=mock_client)
+
+        get_channels_with_search(types=[SlackChannelTypes.PUBLIC])
+
+        mock_set.assert_not_called()
+
+    def test_cold_cache_skips_seed_if_another_request_already_populated(
+        self, mocker
+    ):
+        """A residual race between two concurrent cold requests is benign:
+        the second one to reach the seeding check is a no-op."""
+        mocker.patch(
+            "superset.utils.slack.cache_manager.cache.get",
+            side_effect=[None, ["already", "populated"]],
+        )
+        mock_set = mocker.patch("superset.utils.slack.cache_manager.cache.set")
+        mocker.patch("superset.utils.slack.cache_manager.cache.delete")
+
+        channels = [{"name": "general", "id": "C1", "is_private": False}]
+        mock_data = {
+            "channels": channels,
+            "response_metadata": {"next_cursor": None},
+        }
+        mock_client = mocker.Mock()
+        mock_client.conversations_list.return_value = MockResponse(mock_data)
+        mocker.patch("superset.utils.slack.get_slack_client", return_value=mock_client)
+
+        get_channels_with_search()
+
+        mock_set.assert_not_called()
+
+    def test_search_boundary_returns_empty_without_live_crawl_on_partial_cache(
+        self, mocker
+    ):
+        """A search with no matches within a self-seeded partial cache must
+        return an empty page, not fall through to a full live crawl."""
+        cached_channels = [
+            {"name": f"channel-{i}", "id": f"C{i}", "is_private": False}
+            for i in range(10)
+        ]
+
+        def cache_get_side_effect(key):
+            if key == "slack_conversations_list":
+                return cached_channels
+            if key == "slack_conversations_list_continuation_cursor":
+                return "continuation_cursor_value"
+            return None
+
+        mocker.patch(
+            "superset.utils.slack.cache_manager.cache.get",
+            side_effect=cache_get_side_effect,
+        )
+        mock_get_client = mocker.patch("superset.utils.slack.get_slack_client")
+
+        result = get_channels_with_search(search_string="nonexistent-channel")
+
+        assert result == {"result": [], "next_cursor": None, "has_more": False}
+        mock_get_client.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # should_use_v2_api: drives the v1→v2 auto-upgrade decision and emits
 # DeprecationWarning + logger.warning for both no-flag and missing-scope cases.

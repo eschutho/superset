@@ -2786,6 +2786,37 @@ class TestReportSchedulesApi(SupersetTestCase):
             # But async warmup should NOT be triggered
             mock_cache_channels.delay.assert_not_called()
 
+    @patch("superset.reports.api.cache_channels")
+    @patch("superset.reports.api.cache_manager")
+    @patch("superset.reports.api.get_channels_with_search")
+    def test_slack_channels_api_force_broker_unreachable_degrades_gracefully(
+        self, mock_get_channels, mock_cache_manager, mock_cache_channels
+    ):
+        """
+        Test /api/v1/report/slack_channels/ with force=true still returns 200
+        with the synchronous payload when the Celery broker is unreachable,
+        instead of 500ing on a best-effort async warmup trigger.
+        """
+        from kombu.exceptions import OperationalError as KombuOperationalError
+
+        self.login(ADMIN_USERNAME)
+
+        mock_get_channels.return_value = {
+            "result": [{"id": "C123", "name": "general"}],
+            "next_cursor": None,
+            "has_more": False,
+        }
+        mock_cache_channels.delay.side_effect = KombuOperationalError(
+            "broker unreachable"
+        )
+
+        uri = "api/v1/report/slack_channels/?q=(force:!t)"
+        rv = self.client.get(uri)
+
+        assert rv.status_code == 200
+        data = json.loads(rv.data.decode("utf-8"))
+        assert data["result"] == [{"id": "C123", "name": "general"}]
+
     @pytest.mark.usefixtures("create_report_schedules")
     def test_create_report_schedule_with_garbage_native_filters(self):
         """
