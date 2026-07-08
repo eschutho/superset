@@ -156,7 +156,7 @@ def _fetch_channels_without_search(
     }
 
 
-def _fetch_channels_with_search(
+def _fetch_channels_with_search(  # noqa: C901
     client: WebClient,
     channel_schema: SlackChannelSchema,
     types_param: str,
@@ -564,7 +564,9 @@ def get_channels_with_search(
     # API path for real Slack cursors
     logger.debug("Using API path")
     api_result = _fetch_from_api(search_string, types, exact_match, cursor, limit)
-    _maybe_seed_cache_from_cold_fetch(enable_caching, search_string, types, cursor, api_result)
+    _maybe_seed_cache_from_cold_fetch(
+        enable_caching, search_string, types, cursor, api_result
+    )
     return api_result
 
 
