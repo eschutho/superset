@@ -20,6 +20,7 @@ Unit tests for get_chart_sql MCP tool
 """
 
 import importlib
+from collections.abc import Iterator
 from typing import Any, TYPE_CHECKING
 from unittest.mock import Mock, patch
 
@@ -1209,7 +1210,7 @@ class TestGetChartSqlTool:
             yield mock_get_user
 
     @pytest.fixture(autouse=True)
-    def mock_db_refresh(self):
+    def mock_db_refresh(self) -> Iterator[None]:
         """The Mock chart objects used below aren't real ORM instances, so
         the real db.session.refresh() (added to eagerly reload the chart
         after lookup) can't operate on them. Stub out just that method."""
