@@ -7322,8 +7322,14 @@ class ExploreMixin:  # pylint: disable=too-many-public-methods
                     continue
             else:
                 # Drill-to-detail filters can use verbose labels. Share their
-                # resolution order with the RLS cache-key collector.
-                col_obj = self._get_filter_column(cast(str, flt_col), columns_by_name)
+                # resolution order with the RLS cache-key collector. A filter
+                # column that is neither a string nor a recognized adhoc
+                # column (e.g. a malformed dict) can't be looked up by name.
+                col_obj = (
+                    self._get_filter_column(flt_col, columns_by_name)
+                    if isinstance(flt_col, str)
+                    else None
+                )
                 if (
                     col_obj is None
                     and isinstance(flt_col, str)
